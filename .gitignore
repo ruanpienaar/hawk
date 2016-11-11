@@ -3,8 +3,10 @@ deps
 *.o
 *.beam
 *.plt
+deps/*
+*.DS_Store
+*.log
 erl_crash.dump
-ebin
-rel/example_project
-.concrete/DEV_MODE
+Mnesia*
 .rebar
+ebin/* 

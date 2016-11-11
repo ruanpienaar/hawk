@@ -18,7 +18,7 @@ connecting(#{ connected := false, node := Node, cookie := Cookie, conn_cb := CCB
     proc_lib:spawn_link(fun() -> do_rem_conn(LoopPid, Node, Cookie) end),
     receive
         connected ->
-            ok = CCB(Node),
+            ok = CCB(Node, Cookie),
             true = erlang:monitor_node(Node, true),
             loop(State#{connected => true });
         Else ->

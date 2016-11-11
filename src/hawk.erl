@@ -47,8 +47,8 @@ call(Node, Cmd, Timeout) ->
 %% Helper callbacks:
 
 -spec connected(node()) -> ok.
-connected(Node) ->
-    io:format("Connected!!! ~p ~n", [Node]).
+connected(Node, Cookie) ->
+    io:format("Connected!!! ~p ~p ~n", [Node, Cookie]).
 
 -spec disconnected(node()) -> ok.
 disconnected(Node) ->

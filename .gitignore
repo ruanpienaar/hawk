@@ -9,4 +9,4 @@ deps/*
 erl_crash.dump
 Mnesia*
 .rebar
-ebin/* 
+ebin

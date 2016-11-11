@@ -13,7 +13,7 @@ apps() ->
 %% ------------
 
 add_node(Node, Cookie) ->
-    add_node(Node, Cookie, fun connected/1, fun disconnected/1).
+    add_node(Node, Cookie, fun() -> connected(Node, Cookie) end, fun() -> disconnected(Node) end).
 
 add_node(Node, Cookie, ConnectedCallback, DisconnectedCallback) ->
     hawk_sup:start_child(Node, Cookie, ConnectedCallback, DisconnectedCallback).
@@ -46,7 +46,7 @@ call(Node, Cmd, Timeout) ->
 %% -----------------
 %% Helper callbacks:
 
--spec connected(node()) -> ok.
+-spec connected(node(), atom()) -> ok.
 connected(Node, Cookie) ->
     io:format("Connected!!! ~p ~p ~n", [Node, Cookie]).
 

@@ -7,7 +7,7 @@
 start_link(Node, Cookie, ConnectedCallback, DisconnectedCallback) ->
     io:format("~p start_link ~n", [?MODULE]),
     State = initial_state(Node, Cookie, ConnectedCallback, DisconnectedCallback),
-    {ok, proc_lib:spawn_link(fun() -> 
+    {ok, proc_lib:spawn_link(fun() ->
         true = erlang:register(Node, self()),
         connecting(State)
     end)}.
@@ -18,19 +18,31 @@ connecting(#{ connected := false, node := Node, cookie := Cookie, conn_cb := CCB
     proc_lib:spawn_link(fun() -> do_rem_conn(LoopPid, Node, Cookie) end),
     receive
         connected ->
-            CCB(),
+            try
+                CCB()
+            catch
+                C:E ->
+                    io:format("hawk_node connected callback failed ~p ~p ~p",
+                        [C, E, erlang:get_stacktrace()])
+            end,
             true = erlang:monitor_node(Node, true),
             loop(State#{connected => true });
         Else ->
             io:format("Else : ~p~n", [Else])
     end.
 
-loop(#{connected := true, disc_cb := DCB } = State) ->
+loop(#{connected := true, disc_cb := DCB, node := Node } = State) ->
     % io:format("l"),
     receive
         {nodedown, Node} ->
             % io:format("{nodedown, ~p}~n", [Node]),
-            DCB(),
+            try
+                DCB()
+            catch
+                C:E ->
+                    io:format("hawk_node disconnected callback failed ~p ~p ~p",
+                        [C, E, erlang:get_stacktrace()])
+            end,
             connecting(State#{ connected => false });
         {call, state, ReqPid} ->
             ReqPid ! {response, State},
@@ -41,10 +53,10 @@ loop(#{connected := true, disc_cb := DCB } = State) ->
     end.
 
 initial_state(Node, Cookie, ConnectedCallback, DisconnectedCallback) ->
-    #{ connected=>false, 
-       node=>Node, 
+    #{ connected=>false,
+       node=>Node,
        cookie=>Cookie,
-       conn_cb=>ConnectedCallback, 
+       conn_cb=>ConnectedCallback,
        disc_cb=>DisconnectedCallback
     }.
 

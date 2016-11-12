@@ -12,6 +12,9 @@ apps() ->
     [hawk].
 %% ------------
 
+nodes() ->
+    [ N || {N,_,worker,[hawk_node]} <- supervisor:which_children(hawk_sup) ].
+
 add_node(Node, Cookie) ->
     add_node(Node, Cookie, fun() -> connected(Node, Cookie) end, fun() -> disconnected(Node) end).
 
@@ -21,7 +24,7 @@ add_node(Node, Cookie, ConnectedCallback, DisconnectedCallback) ->
 remove_node(Node) ->
     hawk_sup:delete_child(Node).
 
-update_cookie(Node, NewCookie) ->
+update_cookie(_Node, _NewCookie) ->
     ok.
 
 restart(Node) ->

@@ -29,17 +29,18 @@
 start_link() ->
     supervisor:start_link({local, ?MODULE}, ?MODULE, []).
 
-start_child(Node, Cookie, ConnectedCallback, DisconnectedCallback) ->
+start_child(Node, Cookie, ConnectedCallback, DisconnectedCallback)
+    when is_atom(Node), is_atom(Cookie), is_list(ConnectedCallback), is_list(DisconnectedCallback) ->
     case whereis(Node) of
         undefined ->
-            supervisor:start_child(?MODULE, 
+            supervisor:start_child(?MODULE,
                 ?CHILD(Node, hawk_node, worker, [Node, Cookie, ConnectedCallback, DisconnectedCallback])
             );
         Pid ->
             {error,{already_started,Pid}}
     end.
 
-delete_child(Node) ->
+delete_child(Node) when is_atom(Node) ->
     case whereis(Node) of
         undefined ->
             {error, no_such_node};

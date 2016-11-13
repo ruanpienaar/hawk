@@ -15,11 +15,26 @@ apps() ->
 nodes() ->
     [ N || {N,_,worker,[hawk_node]} <- supervisor:which_children(hawk_sup) ].
 
-add_node(Node, Cookie) ->
-    add_node(Node, Cookie, fun() -> connected(Node, Cookie) end, fun() -> disconnected(Node) end).
+node_exists(Node) ->
+    case whereis(Node) of
+        undefined ->
+            false;
+        Pid when is_pid(Pid) ->
+            {ok, Pid}
+    end.
 
-add_node(Node, Cookie, ConnectedCallback, DisconnectedCallback) ->
+add_node(Node, Cookie) ->
+    add_node(Node, Cookie, [fun() -> connected(Node, Cookie) end], [fun() -> disconnected(Node) end]).
+
+add_node(Node, Cookie, ConnectedCallback, DisconnectedCallback)
+        when is_atom(Node), is_atom(Cookie), is_list(ConnectedCallback), is_list(DisconnectedCallback) ->
     hawk_sup:start_child(Node, Cookie, ConnectedCallback, DisconnectedCallback).
+
+add_connect_callback(Node, ConnectCallback) when is_function(ConnectCallback) ->
+    call(Node, {add_connect_callback, ConnectCallback}).
+
+add_disconnect_callback(Node, DisconnectCallback) when is_function(DisconnectCallback) ->
+    call(Node, {add_disconnect_callback, DisconnectCallback}).
 
 remove_node(Node) ->
     hawk_sup:delete_child(Node).

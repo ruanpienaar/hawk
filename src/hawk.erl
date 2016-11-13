@@ -53,8 +53,8 @@ node_state(Node) ->
 
 callback_names(Node) ->
     case call(Node, callbacks) of
-        {ok, ConCBS, DisCBS} when is_list(ConCBS), is_list(DisCBS) ->
-            lists:map(fun({Name,_}) -> Name end, [ConCBS|DisCBS])
+        {ok, {ConCBS, DisCBS}} when is_list(ConCBS), is_list(DisCBS) ->
+            lists:map(fun({Name,_}) -> Name end, lists:flatten([ConCBS,DisCBS]))
     end.
 
 call(Node, Cmd) ->

@@ -61,7 +61,7 @@ loop(#{connected := true, conn_cb_list := CCBL, disc_cb_list := DCBL, node := No
             ReqPid ! {response, updated},
             loop(State#{disc_cb_list => [DisconnectCallback|DCBL]});
         {call, callbacks, ReqPid} ->
-            ReqPid ! {ok, CCBL, DCBL},
+            ReqPid ! {response, {CCBL, DCBL}},
             loop(State);
         Any ->
             io:format("loop pid recv : ~p~n", [Any]),

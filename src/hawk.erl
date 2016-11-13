@@ -20,11 +20,14 @@ node_exists(Node) ->
         undefined ->
             false;
         Pid when is_pid(Pid) ->
-            {ok, Pid}
+            Callbacknames = callback_names(Node),
+            {ok, Pid, Callbacknames}
     end.
 
 add_node(Node, Cookie) ->
-    add_node(Node, Cookie, [fun() -> connected(Node, Cookie) end], [fun() -> disconnected(Node) end]).
+    add_node(Node, Cookie,
+        [{hawk_default_connected_callback, fun() -> connected(Node, Cookie) end}],
+        [{hawk_default_disconnect_callback, fun() -> disconnected(Node) end}]).
 
 add_node(Node, Cookie, ConnectedCallback, DisconnectedCallback)
         when is_atom(Node), is_atom(Cookie), is_list(ConnectedCallback), is_list(DisconnectedCallback) ->
@@ -48,6 +51,12 @@ restart(Node) ->
 node_state(Node) ->
     call(Node, state).
 
+callback_names(Node) ->
+    case call(Node, callbacks) of
+        {ok, ConCBS, DisCBS} when is_list(ConCBS), is_list(DisCBS) ->
+            lists:map(fun({Name,_}) -> Name end, [ConCBS|DisCBS])
+    end.
+
 call(Node, Cmd) ->
     call(Node, Cmd, 5000).
 
@@ -60,7 +69,6 @@ call(Node, Cmd, Timeout) ->
         Timeout ->
             timeout
     end.
-
 %% -----------------
 %% Helper callbacks:
 

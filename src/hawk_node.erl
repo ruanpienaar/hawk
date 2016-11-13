@@ -18,7 +18,8 @@ connecting(#{ connected := false, node := Node, cookie := Cookie, conn_cb_list :
     proc_lib:spawn_link(fun() -> do_rem_conn(LoopPid, Node, Cookie) end),
     receive
         connected ->
-            lists:foreach(fun(F) ->
+            lists:foreach(fun({_Name, F}) ->
+                %% TODO: Maybe log callback fun somewhere as info/debug
                 %% TODO: maybe spawn, or allow to specify whether callbacks may block or not...
                 try
                     F()
@@ -38,7 +39,8 @@ loop(#{connected := true, conn_cb_list := CCBL, disc_cb_list := DCBL, node := No
     % io:format("l"),
     receive
         {nodedown, Node} ->
-            lists:foreach(fun(F) ->
+            lists:foreach(fun({_Name, F}) ->
+                %% TODO: Maybe log callback fun somewhere as info/debug
                 %% TODO: maybe spawn, or allow to specify whether callbacks may block or not...
                 try
                     F()
@@ -58,6 +60,9 @@ loop(#{connected := true, conn_cb_list := CCBL, disc_cb_list := DCBL, node := No
         {call, {add_disconnect_callback, DisconnectCallback}, ReqPid} when is_function(DisconnectCallback) ->
             ReqPid ! {response, updated},
             loop(State#{disc_cb_list => [DisconnectCallback|DCBL]});
+        {call, callbacks, ReqPid} ->
+            ReqPid ! {ok, CCBL, DCBL},
+            loop(State);
         Any ->
             io:format("loop pid recv : ~p~n", [Any]),
             loop(State)

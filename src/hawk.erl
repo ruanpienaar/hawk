@@ -33,11 +33,11 @@ add_node(Node, Cookie, ConnectedCallback, DisconnectedCallback)
         when is_atom(Node), is_atom(Cookie), is_list(ConnectedCallback), is_list(DisconnectedCallback) ->
     hawk_sup:start_child(Node, Cookie, ConnectedCallback, DisconnectedCallback).
 
-add_connect_callback(Node, ConnectCallback) when is_function(ConnectCallback) ->
-    call(Node, {add_connect_callback, ConnectCallback}).
+add_connect_callback(Node, {Name,ConnectCallback}) when is_function(ConnectCallback) ->
+    call(Node, {add_connect_callback, {Name, ConnectCallback}}).
 
-add_disconnect_callback(Node, DisconnectCallback) when is_function(DisconnectCallback) ->
-    call(Node, {add_disconnect_callback, DisconnectCallback}).
+add_disconnect_callback(Node, {Name, DisconnectCallback}) when is_function(DisconnectCallback) ->
+    call(Node, {add_disconnect_callback, {Name, DisconnectCallback}}).
 
 remove_node(Node) ->
     hawk_sup:delete_child(Node).

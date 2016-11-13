@@ -54,12 +54,12 @@ loop(#{connected := true, conn_cb_list := CCBL, disc_cb_list := DCBL, node := No
         {call, state, ReqPid} ->
             ReqPid ! {response, State},
             loop(State);
-        {call, {add_connect_callback, ConnectCallback}, ReqPid} when is_function(ConnectCallback) ->
+        {call, {add_connect_callback, {Name,ConnectCallback}}, ReqPid} when is_function(ConnectCallback) ->
             ReqPid ! {response, updated},
-            loop(State#{conn_cb_list => [ConnectCallback|CCBL]});
-        {call, {add_disconnect_callback, DisconnectCallback}, ReqPid} when is_function(DisconnectCallback) ->
+            loop(State#{conn_cb_list => [{Name,ConnectCallback}|CCBL]});
+        {call, {add_disconnect_callback, {Name,DisconnectCallback}}, ReqPid} when is_function(DisconnectCallback) ->
             ReqPid ! {response, updated},
-            loop(State#{disc_cb_list => [DisconnectCallback|DCBL]});
+            loop(State#{disc_cb_list => [{Name,DisconnectCallback}|DCBL]});
         {call, callbacks, ReqPid} ->
             ReqPid ! {response, {CCBL, DCBL}},
             loop(State);

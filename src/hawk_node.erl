@@ -18,17 +18,8 @@ connecting(#{ connected := false, node := Node, cookie := Cookie, conn_cb_list :
     proc_lib:spawn_link(fun() -> do_rem_conn(LoopPid, Node, Cookie) end),
     receive
         connected ->
-            lists:foreach(fun({_Name, F}) ->
-                %% TODO: Maybe log callback fun somewhere as info/debug
-                %% TODO: maybe spawn, or allow to specify whether callbacks may block or not...
-                try
-                    F()
-                catch
-                    C:E ->
-                        io:format("hawk_node connected callback failed ~p ~p ~p",
-                            [C, E, erlang:get_stacktrace()])
-                end
-            end, CCBL),
+            process_flag(trap_exit, true),
+            connected_callback(CCBL),
             true = erlang:monitor_node(Node, true),
             loop(State#{connected => true });
         Else ->
@@ -39,17 +30,7 @@ loop(#{connected := true, conn_cb_list := CCBL, disc_cb_list := DCBL, node := No
     % io:format("l"),
     receive
         {nodedown, Node} ->
-            lists:foreach(fun({_Name, F}) ->
-                %% TODO: Maybe log callback fun somewhere as info/debug
-                %% TODO: maybe spawn, or allow to specify whether callbacks may block or not...
-                try
-                    F()
-                catch
-                    C:E ->
-                        io:format("hawk_node disconnected callback failed ~p ~p ~p",
-                            [C, E, erlang:get_stacktrace()])
-                end
-            end, DCBL),
+            ok = disconnect_or_delete_callback(DCBL),
             connecting(State#{ connected => false });
         {call, state, ReqPid} ->
             ReqPid ! {response, State},
@@ -63,10 +44,39 @@ loop(#{connected := true, conn_cb_list := CCBL, disc_cb_list := DCBL, node := No
         {call, callbacks, ReqPid} ->
             ReqPid ! {response, {CCBL, DCBL}},
             loop(State);
+        {'EXIT',Pid,shutdown} ->
+            io:format("requested shutdown from ~p name:~p~n", [Pid,erlang:process_info(Pid, registered_name)]),
+            ok = disconnect_or_delete_callback(DCBL);
         Any ->
             io:format("loop pid recv : ~p~n", [Any]),
             loop(State)
     end.
+
+connected_callback(CCBL) ->
+    lists:foreach(fun({_Name, F}) ->
+        %% TODO: Maybe log callback fun somewhere as info/debug
+        %% TODO: maybe spawn, or allow to specify whether callbacks may block or not...
+        try
+            F()
+        catch
+            C:E ->
+                io:format("hawk_node connected callback failed ~p ~p ~p",
+                    [C, E, erlang:get_stacktrace()])
+        end
+    end, CCBL).
+
+disconnect_or_delete_callback(DCBL) ->
+    lists:foreach(fun({_Name, F}) ->
+    %% TODO: Maybe log callback fun somewhere as info/debug
+    %% TODO: maybe spawn, or allow to specify whether callbacks may block or not...
+        try
+            F()
+        catch
+            C:E ->
+                io:format("hawk_node disconnected callback failed ~p ~p ~p",
+                    [C, E, erlang:get_stacktrace()])
+        end
+    end, DCBL).
 
 initial_state(Node, Cookie, ConnectedCallbacks, DisconnectedCallbacks) ->
     #{ connected=>false,

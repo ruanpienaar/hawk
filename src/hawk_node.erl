@@ -12,18 +12,24 @@ start_link(Node, Cookie, ConnectedCallback, DisconnectedCallback) ->
         connecting(State)
     end)}.
 
-connecting(#{ connected := false, node := Node, cookie := Cookie, conn_cb_list := CCBL } = State) ->
+connecting(#{ connected := false, node := Node, cookie := Cookie, conn_cb_list := CCBL, disc_cb_list := DCBL } = State) ->
     % io:format("c"),
     LoopPid = self(),
-    proc_lib:spawn_link(fun() -> do_rem_conn(LoopPid, Node, Cookie) end),
+    RetryCount = application:get_env(hawk, connection_retries, 1000),
+    proc_lib:spawn_link(fun() -> do_rem_conn(LoopPid, Node, Cookie, RetryCount) end),
     receive
         connected ->
             process_flag(trap_exit, true),
             connected_callback(CCBL),
             true = erlang:monitor_node(Node, true),
             loop(State#{connected => true });
+        max_connection_attempts ->
+            io:format("max connection attempts: dropping ~p soon~n", [Node]),
+            ok = disconnect_or_delete_callback(DCBL),
+            spawn(fun() -> ok = hawk:remove_node(Node) end),
+            deathbed();
         Else ->
-            io:format("Else : ~p~n", [Else])
+            io:format("connecting received:~p~n", [Else])
     end.
 
 loop(#{connected := true, conn_cb_list := CCBL, disc_cb_list := DCBL, node := Node } = State) ->
@@ -50,6 +56,11 @@ loop(#{connected := true, conn_cb_list := CCBL, disc_cb_list := DCBL, node := No
         Any ->
             io:format("loop pid recv : ~p~n", [Any]),
             loop(State)
+    end.
+    
+deathbed() ->
+    receive
+        Any -> deathbed()
     end.
 
 connected_callback(CCBL) ->
@@ -86,12 +97,17 @@ initial_state(Node, Cookie, ConnectedCallbacks, DisconnectedCallbacks) ->
        disc_cb_list=>DisconnectedCallbacks
     }.
 
-do_rem_conn(ConnectingPid, Node, Cookie) -> %% Find a more ellegant way of waiting...
-    % io:format("d"),
+do_rem_conn(ConnectingPid, _, _, 0) ->
+    ConnectingPid ! max_connection_attempts;
+%% Setting retry count -1, will just always try to reconnect...
+do_rem_conn(ConnectingPid, Node, Cookie, RetryCount) -> %% Find a more ellegant way of waiting...
+    %% io:format("~p ", [RetryCount]),
     case ((erlang:set_cookie(Node,Cookie)) andalso (net_kernel:connect(Node))) of
         false ->
-            timer:sleep(application:get_env(hawk, conn_retry_wait, 200)),
-            do_rem_conn(ConnectingPid, Node, Cookie);
+            timer:sleep(application:get_env(hawk, conn_retry_wait, 50)),
+            do_rem_conn(ConnectingPid, Node, Cookie, RetryCount-1);
         true ->
             ConnectingPid ! connected
     end.
+    
+  

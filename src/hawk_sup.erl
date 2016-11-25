@@ -15,9 +15,16 @@
 
 -define(CHILD(Id, Mod, Type, Args),
     {Id, {Mod, start_link, Args}, permanent, 5000, Type, [Mod]}).
+%% TODO: add maps...
+    % #{id := Id,
+    %   start := {Mod, start_link, Args},
+    %   restart => permanent,
+    %   shutdown => 5000,
+    %   type => Type,
+    %   modules => [Mod]}.
 
 -define(CHILD(Id, Mod, Func, Type, Args),
-    {Id, {Mod, Func, Args}, permanent, 5000, Type, [Mod]}).
+    % {Id, {Mod, Func, Args}, permanent, 5000, Type, [Mod]}).
 
 -include("hawk.hrl").
 

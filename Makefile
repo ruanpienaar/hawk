@@ -16,7 +16,7 @@ deep-clean: clean
 	@rebar delete-deps
 
 setup_dialyzer:
-	dialyzer --build_plt --apps erts kernel stdlib runtime_tools syntax_tools deps/*/ebin ./ebin
+	dialyzer --build_plt --apps erts kernel stdlib runtime_tools syntax_tools ./ebin
 	dialyzer --add_to_plt ebin
 
 dialyzer: compile

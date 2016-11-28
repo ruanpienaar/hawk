@@ -63,6 +63,9 @@ loop(#{connected := true, conn_cb_list := CCBL, disc_cb_list := DCBL, node := No
         {call, callbacks, ReqPid} ->
             ReqPid ! {response, {CCBL, DCBL}},
             loop(State);
+        Any={'EXIT',Pid,normal} ->
+            io:format("loop pid recv : ~p~p~n", [Any,erlang:process_info(Pid)]),
+            loop(State);
         Any ->
             io:format("loop pid recv : ~p~n", [Any]),
             loop(State)

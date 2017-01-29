@@ -60,7 +60,7 @@ loop(#{connected := true, conn_cb_list := CCBL, disc_cb_list := DCBL, node := No
     
 deathbed() ->
     receive
-        Any -> deathbed()
+        _ -> deathbed()
     end.
 
 connected_callback(CCBL) ->

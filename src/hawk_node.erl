@@ -12,11 +12,16 @@ start_link(Node, Cookie, ConnectedCallback, DisconnectedCallback) ->
         connecting(State)
     end)}.
 
-connecting(#{ connected := false, node := Node, cookie := Cookie, conn_cb_list := CCBL, disc_cb_list := DCBL } = State) ->
+connecting(#{ connected := false, node := Node, cookie :=
+              Cookie, conn_cb_list := CCBL, disc_cb_list := DCBL } = State) ->
     % io:format("c"),
     LoopPid = self(),
     RetryCount = application:get_env(hawk, connection_retries, 1000),
     proc_lib:spawn_link(fun() -> do_rem_conn(LoopPid, Node, Cookie, RetryCount) end),
+    do_wait(State).
+
+do_wait(#{ connected := false, node := Node, cookie := Cookie,
+           conn_cb_list := CCBL, disc_cb_list := DCBL } = State) ->
     receive
         connected ->
             process_flag(trap_exit, true),
@@ -28,8 +33,12 @@ connecting(#{ connected := false, node := Node, cookie := Cookie, conn_cb_list :
             ok = disconnect_or_delete_callback(DCBL),
             spawn(fun() -> ok = hawk:remove_node(Node) end),
             deathbed();
+        {call,callbacks,ReqPid} ->
+            ReqPid ! {response, connecting},
+            do_wait(State);
         Else ->
-            io:format("connecting received:~p~n", [Else])
+            io:format("connecting received:~p~n", [Else]),
+            do_wait(State)
     end.
 
 loop(#{connected := true, conn_cb_list := CCBL, disc_cb_list := DCBL, node := Node } = State) ->
@@ -47,6 +56,12 @@ loop(#{connected := true, conn_cb_list := CCBL, disc_cb_list := DCBL, node := No
         {call, {add_disconnect_callback, {Name,DisconnectCallback}}, ReqPid} when is_function(DisconnectCallback) ->
             ReqPid ! {response, updated},
             loop(State#{disc_cb_list => [{Name,DisconnectCallback}|DCBL]});
+        {call, {remove_connect_callback, Name}, ReqPid} ->
+            ReqPid ! {response, updated},
+            loop(State#{conn_cb_list => lists:keydelete(Name, 1, CCBL)});
+        {call, {remove_disconnect_callback, Name}, ReqPid} ->
+            ReqPid ! {response, updated},
+            loop(State#{disc_cb_list => lists:keydelete(Name, 1, DCBL)});
         {call, callbacks, ReqPid} ->
             ReqPid ! {response, {CCBL, DCBL}},
             loop(State);
@@ -57,7 +72,7 @@ loop(#{connected := true, conn_cb_list := CCBL, disc_cb_list := DCBL, node := No
             io:format("loop pid recv : ~p~n", [Any]),
             loop(State)
     end.
-    
+
 deathbed() ->
     receive
         _ -> deathbed()
@@ -109,5 +124,4 @@ do_rem_conn(ConnectingPid, Node, Cookie, RetryCount) -> %% Find a more ellegant 
         true ->
             ConnectingPid ! connected
     end.
-    
-  
+

@@ -1,8 +1,22 @@
 -module(hawk).
 
--compile(export_all).
-% -export([
-% ]).
+% -compile(export_all).
+-export([
+    start/0,
+    stop/0
+]).
+-export([
+    nodes/0,
+    node_exists/1,
+    add_node/2, add_node/4,
+    add_connect_callback/2,
+    add_disconnect_callback/2,
+    remove_connect_callback/2,
+    remove_disconnect_callback/2,
+    remove_node/1,
+    update_cookie/2,
+    node_state/1
+]).
 -define(R, hawk_req).
 
 %% ------------
@@ -20,14 +34,11 @@ node_exists(Node) ->
         undefined ->
             false;
         Pid when is_pid(Pid) ->
-            Callbacknames = callback_names(Node),
-            {ok, Pid, Callbacknames}
+            callback_names(Pid, Node)
     end.
 
 add_node(Node, Cookie) ->
-    add_node(Node, Cookie,
-        [{hawk_default_connected_callback, fun() -> connected(Node, Cookie) end}],
-        [{hawk_default_disconnect_callback, fun() -> disconnected(Node) end}]).
+    hawk_sup:start_child(Node, Cookie, [], []).
 
 add_node(Node, Cookie, ConnectedCallback, DisconnectedCallback)
         when is_atom(Node), is_atom(Cookie), is_list(ConnectedCallback), is_list(DisconnectedCallback) ->
@@ -39,22 +50,28 @@ add_connect_callback(Node, {Name,ConnectCallback}) when is_function(ConnectCallb
 add_disconnect_callback(Node, {Name, DisconnectCallback}) when is_function(DisconnectCallback) ->
     call(Node, {add_disconnect_callback, {Name, DisconnectCallback}}).
 
+remove_connect_callback(Node, Name) ->
+    call(Node, {remove_connect_callback, Name}).
+
+remove_disconnect_callback(Node, Name) ->
+    call(Node, {remove_disconnect_callback, Name}).
+
 remove_node(Node) ->
     hawk_sup:delete_child(Node).
 
 update_cookie(_Node, _NewCookie) ->
     ok.
 
-restart(Node) ->
-    call(Node, restart).
-
 node_state(Node) ->
     call(Node, state).
 
-callback_names(Node) ->
+callback_names(Pid, Node) ->
     case call(Node, callbacks) of
         {ok, {ConCBS, DisCBS}} when is_list(ConCBS), is_list(DisCBS) ->
-            lists:map(fun({Name,_}) -> Name end, lists:flatten([ConCBS,DisCBS]))
+            Callbacknames = lists:map(fun({Name,_}) -> Name end, lists:flatten([ConCBS,DisCBS])),
+            {ok, Pid, Callbacknames};
+        Else ->
+            Else
     end.
 
 call(Node, Cmd) ->
@@ -63,6 +80,8 @@ call(Node, Cmd) ->
 call(Node, Cmd, Timeout) ->
     whereis(Node) ! {call, Cmd, self()},
     receive
+        {response, connecting} ->
+            {error, connecting};
         {response, Response} ->
             {ok, Response}
     after

@@ -33,7 +33,24 @@ do_wait(#{ connected := false, node := Node, cookie := Cookie,
             ok = disconnect_or_delete_callback(DCBL),
             spawn(fun() -> ok = hawk:remove_node(Node) end),
             deathbed();
-        {call,callbacks,ReqPid} ->
+        %% Handle the callbacks add/del when not connected ( connecting )
+        {call, {add_connect_callback, {Name,ConnectCallback}}, ReqPid} when is_function(ConnectCallback) ->
+            ReqPid ! {response, updated},
+            do_wait(State#{conn_cb_list => [{Name,ConnectCallback}|CCBL]});
+        {call, {add_disconnect_callback, {Name,DisconnectCallback}}, ReqPid} when is_function(DisconnectCallback) ->
+
+            %% Since we are not connected, we can execute the disconnected callback.
+            ok = disconnect_or_delete_callback([{Name,DisconnectCallback}]),
+
+            ReqPid ! {response, updated},
+            do_wait(State#{disc_cb_list => [{Name,DisconnectCallback}|DCBL]});
+        {call, {remove_connect_callback, Name}, ReqPid} ->
+            ReqPid ! {response, updated},
+            do_wait(State#{conn_cb_list => lists:keydelete(Name, 1, CCBL)});
+        {call, {remove_disconnect_callback, Name}, ReqPid} ->
+            ReqPid ! {response, updated},
+            do_wait(State#{disc_cb_list => lists:keydelete(Name, 1, DCBL)});
+        {call,_,ReqPid} ->
             ReqPid ! {response, connecting},
             do_wait(State);
         Else ->
@@ -51,6 +68,10 @@ loop(#{connected := true, conn_cb_list := CCBL, disc_cb_list := DCBL, node := No
             ReqPid ! {response, State},
             loop(State);
         {call, {add_connect_callback, {Name,ConnectCallback}}, ReqPid} when is_function(ConnectCallback) ->
+
+            %% Since we are connected, we can trigger the connect callback
+            connected_callback([{Name,ConnectCallback}]),
+
             ReqPid ! {response, updated},
             loop(State#{conn_cb_list => [{Name,ConnectCallback}|CCBL]});
         {call, {add_disconnect_callback, {Name,DisconnectCallback}}, ReqPid} when is_function(DisconnectCallback) ->

@@ -38,11 +38,29 @@ node_exists(Node) ->
     end.
 
 add_node(Node, Cookie) ->
-    hawk_sup:start_child(Node, Cookie, [], []).
+    case node_exists(Node) of
+        false ->
+            add_node(Node, Cookie, [], []);
+        {ok, Pid, Callbacks} ->
+            {error,{already_started,Pid}}
+    end.
 
 add_node(Node, Cookie, ConnectedCallback, DisconnectedCallback)
         when is_atom(Node), is_atom(Cookie), is_list(ConnectedCallback), is_list(DisconnectedCallback) ->
-    hawk_sup:start_child(Node, Cookie, ConnectedCallback, DisconnectedCallback).
+    case node_exists(Node) of
+        false ->
+            hawk_sup:start_child(Node, Cookie, ConnectedCallback, DisconnectedCallback);
+        {ok, Pid, Callbacks} ->
+            ok = lists:foreach(fun({Name,ConnectCallback}) ->
+                %% hawk_node handles the dups
+                add_connect_callback(Node, {Name,ConnectCallback})
+            end, ConnectedCallback),
+            ok = lists:foreach(fun({Name, DisconnectCallback}) ->
+                %% hawk_node handles the dups
+                add_disconnect_callback(Node, {Name, DisconnectCallback})
+            end, DisconnectedCallback),
+            {error,{already_started,Pid}}
+    end.
 
 add_connect_callback(Node, {Name,ConnectCallback}) when is_function(ConnectCallback) ->
     call(Node, {add_connect_callback, {Name, ConnectCallback}}).
@@ -75,7 +93,7 @@ callback_names(Pid, Node) ->
     end.
 
 call(Node, Cmd) ->
-    call(Node, Cmd, 5000).
+    call(Node, Cmd, 1000).
 
 call(Node, Cmd, Timeout) ->
     whereis(Node) ! {call, Cmd, self()},

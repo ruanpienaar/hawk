@@ -13,43 +13,56 @@ start_link(Node, Cookie, ConnectedCallback, DisconnectedCallback) ->
     end)}.
 
 connecting(#{ connected := false, node := Node, cookie :=
-              Cookie, conn_cb_list := CCBL, disc_cb_list := DCBL } = State) ->
+              Cookie } = State) ->
     % io:format("c"),
     LoopPid = self(),
     RetryCount = application:get_env(hawk, connection_retries, 1000),
-    proc_lib:spawn_link(fun() -> do_rem_conn(LoopPid, Node, Cookie, RetryCount) end),
-    do_wait(State).
+    P = proc_lib:spawn_link(fun() -> do_rem_conn(LoopPid, Node, Cookie, RetryCount) end),
+    do_wait(State#{do_rem_conn_pid => P}).
 
-do_wait(#{ connected := false, node := Node, cookie := Cookie,
-           conn_cb_list := CCBL, disc_cb_list := DCBL } = State) ->
+%% TODO: maybe configure for auto execute callbacks, based on current state.
+%% sometimes you do not want the callbacks to be executed immediately.
+
+do_wait(#{ connected := false, node := Node, conn_cb_list := CCBL, disc_cb_list := DCBL } = State) ->
     receive
         connected ->
             process_flag(trap_exit, true),
             connected_callback(CCBL),
             true = erlang:monitor_node(Node, true),
-            loop(State#{connected => true });
+            loop(State#{connected => true});
         max_connection_attempts ->
             io:format("max connection attempts: dropping ~p soon~n", [Node]),
-            ok = disconnect_or_delete_callback(DCBL),
+            % Not sure, but removing it for now, since it was running twice, once for disconnect, and for reaching max attempts
+            % ok = disconnect_or_delete_callback(DCBL),
             spawn(fun() -> ok = hawk:remove_node(Node) end),
             deathbed();
-        %% Handle the callbacks add/del when not connected ( connecting )
+        %% Not connected yet, cannot call connect callback
         {call, {add_connect_callback, {Name,ConnectCallback}}, ReqPid} when is_function(ConnectCallback) ->
-            ReqPid ! {response, updated},
-            do_wait(State#{conn_cb_list => [{Name,ConnectCallback}|CCBL]});
+            do_wait(case lists:keyfind(Name, 1, CCBL) of
+                false ->
+                    ReqPid ! {response, updated},
+                    State#{conn_cb_list => [{Name,ConnectCallback}|CCBL]};
+                _ ->
+                    ReqPid ! {response, duplicate},
+                    State
+            end);
+        %% Not connected yet, can call disconnect callback
         {call, {add_disconnect_callback, {Name,DisconnectCallback}}, ReqPid} when is_function(DisconnectCallback) ->
-
-            %% Since we are not connected, we can execute the disconnected callback.
-            ok = disconnect_or_delete_callback([{Name,DisconnectCallback}]),
-
-            ReqPid ! {response, updated},
-            do_wait(State#{disc_cb_list => [{Name,DisconnectCallback}|DCBL]});
+            do_wait(case lists:keyfind(Name, 1, DCBL) of
+                false ->
+                    ok = disconnect_or_delete_callback([{Name,DisconnectCallback}]),
+                    ReqPid ! {response, updated},
+                    State#{disc_cb_list => [{Name,DisconnectCallback}|DCBL]};
+                _ ->
+                    ReqPid ! {response, duplicate},
+                    State
+            end);
         {call, {remove_connect_callback, Name}, ReqPid} ->
             ReqPid ! {response, updated},
-            do_wait(State#{conn_cb_list => lists:keydelete(Name, 1, CCBL)});
+            loop(State#{conn_cb_list => lists:keydelete(Name, 1, CCBL)});
         {call, {remove_disconnect_callback, Name}, ReqPid} ->
             ReqPid ! {response, updated},
-            do_wait(State#{disc_cb_list => lists:keydelete(Name, 1, DCBL)});
+            loop(State#{disc_cb_list => lists:keydelete(Name, 1, DCBL)});
         {call,_,ReqPid} ->
             ReqPid ! {response, connecting},
             do_wait(State);
@@ -58,7 +71,8 @@ do_wait(#{ connected := false, node := Node, cookie := Cookie,
             do_wait(State)
     end.
 
-loop(#{connected := true, conn_cb_list := CCBL, disc_cb_list := DCBL, node := Node } = State) ->
+loop(#{connected := true, conn_cb_list := CCBL, disc_cb_list := DCBL, node := Node} = State) ->
+    #{ do_rem_conn_pid := DoRemConnPid } = State,
     % io:format("l"),
     receive
         {nodedown, Node} ->
@@ -67,16 +81,26 @@ loop(#{connected := true, conn_cb_list := CCBL, disc_cb_list := DCBL, node := No
         {call, state, ReqPid} ->
             ReqPid ! {response, State},
             loop(State);
+        %% Connected so we can execute the connected callback
         {call, {add_connect_callback, {Name,ConnectCallback}}, ReqPid} when is_function(ConnectCallback) ->
-
-            %% Since we are connected, we can trigger the connect callback
-            connected_callback([{Name,ConnectCallback}]),
-
-            ReqPid ! {response, updated},
-            loop(State#{conn_cb_list => [{Name,ConnectCallback}|CCBL]});
+            loop(case lists:keyfind(Name, 1, CCBL) of
+                false ->
+                    connected_callback([{Name,ConnectCallback}]),
+                    ReqPid ! {response, updated},
+                    State#{conn_cb_list => [{Name,ConnectCallback}|CCBL]};
+                _ ->
+                    ReqPid ! {response, duplicate},
+                    State
+            end);
         {call, {add_disconnect_callback, {Name,DisconnectCallback}}, ReqPid} when is_function(DisconnectCallback) ->
-            ReqPid ! {response, updated},
-            loop(State#{disc_cb_list => [{Name,DisconnectCallback}|DCBL]});
+            loop(case lists:keyfind(Name, 1, DCBL) of
+                false ->
+                    ReqPid ! {response, updated},
+                    State#{disc_cb_list => [{Name,DisconnectCallback}|DCBL]};
+                _ ->
+                    ReqPid ! {response, duplicate},
+                    State
+            end);
         {call, {remove_connect_callback, Name}, ReqPid} ->
             ReqPid ! {response, updated},
             loop(State#{conn_cb_list => lists:keydelete(Name, 1, CCBL)});
@@ -89,9 +113,11 @@ loop(#{connected := true, conn_cb_list := CCBL, disc_cb_list := DCBL, node := No
         {'EXIT',Pid,shutdown} ->
             io:format("requested shutdown from ~p name:~p~n", [Pid,erlang:process_info(Pid, registered_name)]),
             ok = disconnect_or_delete_callback(DCBL);
+        {'EXIT',DoRemConnPid,normal} ->
+            loop(State#{do_rem_conn_pid=>undefined});
         Any ->
-            io:format("loop pid recv : ~p~n", [Any]),
-            loop(State)
+            %% io:format("loop pid recv : ~p~n", [Any]),
+            loop(State#{})
     end.
 
 deathbed() ->
@@ -137,6 +163,7 @@ do_rem_conn(ConnectingPid, _, _, 0) ->
     ConnectingPid ! max_connection_attempts;
 %% Setting retry count -1, will just always try to reconnect...
 do_rem_conn(ConnectingPid, Node, Cookie, RetryCount) -> %% Find a more ellegant way of waiting...
+    % io:format("self ~p~n", [self()]),
     %% io:format("~p ", [RetryCount]),
     case ((erlang:set_cookie(Node,Cookie)) andalso (net_kernel:connect(Node))) of
         false ->

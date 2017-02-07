@@ -189,7 +189,7 @@ node_state() ->
                        cookie => cookie,
                        disc_cb_list => [],
                        do_rem_conn_pid => DoRemConnPid,
-                       node => tests@mbp}}, hawk:node_state(Node)),
+                       node => Node}}, hawk:node_state(Node)),
     ?assertEqual(ok, hawk:remove_node(Node)).
 
 %%--------------------------------------------------------

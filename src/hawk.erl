@@ -111,10 +111,10 @@ call(Node, Cmd, Timeout) ->
 
 -spec connected(node(), atom()) -> ok.
 connected(Node, Cookie) ->
-    io:format("Connected!!! ~p ~p ~n", [Node, Cookie]).
+    error_logger:info_msg("Connected!!! ~p ~p ~n", [Node, Cookie]).
 
 -spec disconnected(node()) -> ok.
 disconnected(Node) ->
-    io:format("disConnected!!! ~p ~n", [Node]).
+    error_logger:info_msg("disConnected!!! ~p ~n", [Node]).
 
 %% -----------------

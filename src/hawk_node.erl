@@ -5,7 +5,6 @@
 ]).
 
 start_link(Node, Cookie, ConnectedCallback, DisconnectedCallback) ->
-    %% io:format("~p start_link ~n", [?MODULE]),
     State = initial_state(Node, Cookie, ConnectedCallback, DisconnectedCallback),
     {ok, proc_lib:spawn_link(fun() ->
         true = erlang:register(Node, self()),
@@ -14,7 +13,6 @@ start_link(Node, Cookie, ConnectedCallback, DisconnectedCallback) ->
 
 connecting(#{ connected := false, node := Node, cookie :=
               Cookie } = State) ->
-    % io:format("c"),
     LoopPid = self(),
     RetryCount = application:get_env(hawk, connection_retries, 1000),
     P = proc_lib:spawn_link(fun() -> do_rem_conn(LoopPid, Node, Cookie, RetryCount) end),
@@ -31,7 +29,7 @@ do_wait(#{ connected := false, node := Node, conn_cb_list := CCBL, disc_cb_list 
             true = erlang:monitor_node(Node, true),
             loop(State#{connected => true});
         max_connection_attempts ->
-            io:format("max connection attempts: dropping ~p soon~n", [Node]),
+            error_logger:info_msg("max connection attempts: dropping ~p soon~n", [Node]),
             % Not sure, but removing it for now, since it was running twice, once for disconnect, and for reaching max attempts
             % ok = disconnect_or_delete_callback(DCBL),
             spawn(fun() -> ok = hawk:remove_node(Node) end),
@@ -67,13 +65,12 @@ do_wait(#{ connected := false, node := Node, conn_cb_list := CCBL, disc_cb_list 
             ReqPid ! {response, connecting},
             do_wait(State);
         Else ->
-            io:format("connecting received:~p~n", [Else]),
+            error_logger:error_msg("connecting received:~p~n", [Else]),
             do_wait(State)
     end.
 
 loop(#{connected := true, conn_cb_list := CCBL, disc_cb_list := DCBL, node := Node} = State) ->
     #{ do_rem_conn_pid := DoRemConnPid } = State,
-    % io:format("l"),
     receive
         {nodedown, Node} ->
             ok = disconnect_or_delete_callback(DCBL),
@@ -111,12 +108,12 @@ loop(#{connected := true, conn_cb_list := CCBL, disc_cb_list := DCBL, node := No
             ReqPid ! {response, {CCBL, DCBL}},
             loop(State);
         {'EXIT',Pid,shutdown} ->
-            io:format("requested shutdown from ~p name:~p~n", [Pid,erlang:process_info(Pid, registered_name)]),
+            error_logger:info_msg("requested shutdown from ~p name:~p~n", [Pid,erlang:process_info(Pid, registered_name)]),
             ok = disconnect_or_delete_callback(DCBL);
         {'EXIT',DoRemConnPid,normal} ->
             loop(State#{do_rem_conn_pid=>undefined});
         Any ->
-            %% io:format("loop pid recv : ~p~n", [Any]),
+            error_logger:error_msg("loop pid recv : ~p~n", [Any]),
             loop(State#{})
     end.
 
@@ -133,7 +130,7 @@ connected_callback(CCBL) ->
             F()
         catch
             C:E ->
-                io:format("hawk_node connected callback failed ~p ~p ~p",
+                error_logger:error_msg("hawk_node connected callback failed ~p ~p ~p",
                     [C, E, erlang:get_stacktrace()])
         end
     end, CCBL).
@@ -146,7 +143,7 @@ disconnect_or_delete_callback(DCBL) ->
             F()
         catch
             C:E ->
-                io:format("hawk_node disconnected callback failed ~p ~p ~p",
+                error_logger:error_msg("hawk_node disconnected callback failed ~p ~p ~p",
                     [C, E, erlang:get_stacktrace()])
         end
     end, DCBL).
@@ -163,13 +160,12 @@ do_rem_conn(ConnectingPid, _, _, 0) ->
     ConnectingPid ! max_connection_attempts;
 %% Setting retry count -1, will just always try to reconnect...
 do_rem_conn(ConnectingPid, Node, Cookie, RetryCount) -> %% Find a more ellegant way of waiting...
-    % io:format("self ~p~n", [self()]),
-    %% io:format("~p ", [RetryCount]),
-    case ((erlang:set_cookie(Node,Cookie)) andalso (net_kernel:connect(Node))) of
+    case ((erlang:set_cookie(Node,Cookie)) andalso (net_kernel:connect_node(Node))) of
         false ->
             timer:sleep(application:get_env(hawk, conn_retry_wait, 50)),
             do_rem_conn(ConnectingPid, Node, Cookie, RetryCount-1);
         true ->
+            error_logger:info_msg("Node ~p connected...", [Node]),
             ConnectingPid ! connected
     end.
 

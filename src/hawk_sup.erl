@@ -23,12 +23,6 @@
     %   type => Type,
     %   modules => [Mod]}.
 
--define(CHILD(Id, Mod, Func, Type, Args),
-    % {Id, {Mod, Func, Args}, permanent, 5000, Type, [Mod]}).
-
--include("hawk.hrl").
-
-
 %% ===================================================================
 %% API functions
 %% ===================================================================

@@ -41,7 +41,7 @@ add_node(Node, Cookie) ->
     case node_exists(Node) of
         false ->
             add_node(Node, Cookie, [], []);
-        {ok, Pid, Callbacks} ->
+        {ok, Pid, _Callbacks} ->
             {error,{already_started,Pid}}
     end.
 
@@ -50,7 +50,7 @@ add_node(Node, Cookie, ConnectedCallback, DisconnectedCallback)
     case node_exists(Node) of
         false ->
             hawk_sup:start_child(Node, Cookie, ConnectedCallback, DisconnectedCallback);
-        {ok, Pid, Callbacks} ->
+        {ok, Pid, _Callbacks} ->
             ok = lists:foreach(fun({Name,ConnectCallback}) ->
                 %% hawk_node handles the dups
                 add_connect_callback(Node, {Name,ConnectCallback})
@@ -109,12 +109,12 @@ call(Node, Cmd, Timeout) ->
 %% -----------------
 %% Helper callbacks:
 
--spec connected(node(), atom()) -> ok.
-connected(Node, Cookie) ->
-    error_logger:info_msg("Connected!!! ~p ~p ~n", [Node, Cookie]).
+% -spec connected(node(), atom()) -> ok.
+% connected(Node, Cookie) ->
+%     error_logger:info_msg("Connected!!! ~p ~p ~n", [Node, Cookie]).
 
--spec disconnected(node()) -> ok.
-disconnected(Node) ->
-    error_logger:info_msg("disConnected!!! ~p ~n", [Node]).
+% -spec disconnected(node()) -> ok.
+% disconnected(Node) ->
+%     error_logger:info_msg("disConnected!!! ~p ~n", [Node]).
 
 %% -----------------

@@ -25,8 +25,8 @@ do_wait(#{ connected := false, node := Node, conn_cb_list := CCBL, disc_cb_list 
     receive
         connected ->
             process_flag(trap_exit, true),
-            connected_callback(CCBL),
             true = erlang:monitor_node(Node, true),
+            connected_callback(CCBL),
             loop(State#{connected => true});
         max_connection_attempts ->
             error_logger:info_msg("max connection attempts: dropping ~p soon~n", [Node]),
@@ -64,6 +64,8 @@ do_wait(#{ connected := false, node := Node, conn_cb_list := CCBL, disc_cb_list 
         {call,_,ReqPid} ->
             ReqPid ! {response, connecting},
             do_wait(State);
+        {'EXIT',Who,shutdown} ->
+            do_terminate(Who, DCBL, State, loop);
         Else ->
             error_logger:error_msg("connecting received:~p~n", [Else]),
             do_wait(State)
@@ -107,14 +109,24 @@ loop(#{connected := true, conn_cb_list := CCBL, disc_cb_list := DCBL, node := No
         {call, callbacks, ReqPid} ->
             ReqPid ! {response, {CCBL, DCBL}},
             loop(State);
-        {'EXIT',Pid,shutdown} ->
-            error_logger:info_msg("requested shutdown from ~p name:~p~n", [Pid,erlang:process_info(Pid, registered_name)]),
-            ok = disconnect_or_delete_callback(DCBL);
-        {'EXIT',DoRemConnPid,normal} ->
+        {'EXIT',Who,shutdown} ->
+            do_terminate(Who, DCBL, State, loop);
+        {'EXIT',DoRemConnPid,normal} -> %% Connecting proc dies, because it's done/connected ( started with link )
             loop(State#{do_rem_conn_pid=>undefined});
         Any ->
             error_logger:error_msg("loop pid recv : ~p~n", [Any]),
             loop(State#{})
+    end.
+
+do_terminate(Who, DCBL, State, LoopFunctionName) ->
+    error_logger:info_msg(
+        "requested shutdown from ~p name:~p~n",
+        [Who,erlang:process_info(Who, registered_name)]),
+    case whereis(hawk_sup)==Who of
+        true ->
+            ok = disconnect_or_delete_callback(DCBL);
+        false ->
+            LoopFunctionName(State)
     end.
 
 deathbed() ->

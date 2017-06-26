@@ -11,3 +11,4 @@ Mnesia*
 .rebar
 ebin
 error.log
+rebar

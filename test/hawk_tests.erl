@@ -13,6 +13,10 @@ api_test_() ->
                 fun hawk_node_exists/0},
             {"API -> add_node/2",
                 fun add_node/0},
+            {"API -> add_node/2 (Add duplicate node)",
+                fun add_node_duplicate/0},
+            {"API -> add_node/2 (max conn attempts made)",
+                fun add_node_max_attempt/0},
             {"API -> add_node/4",
                 fun add_node_with_cbs/0},
             {"API -> add_connect_callback",
@@ -58,6 +62,31 @@ add_node() ->
         keep_calling(10, fun() -> hawk:node_exists(Node) end)
     ),
     ?assertEqual(ok, hawk:remove_node(Node)).
+
+add_node_duplicate() ->
+    {ok, Host} = inet:gethostname(),
+    Node = list_to_atom("tests@"++Host),
+    ?assertEqual([], hawk:nodes()),
+    ?assertEqual(false, hawk:node_exists(Node)),
+    {ok,Pid} = hawk:add_node(Node, cookie),
+    ?assertEqual([Node], hawk:nodes()),
+    ?assertEqual(
+        {ok,Pid,[]},
+        keep_calling(10, fun() -> hawk:node_exists(Node) end)
+    ),
+    {error,{already_started,Pid}} = hawk:add_node(Node, cookie),
+    ?assertEqual(ok, hawk:remove_node(Node)).
+
+add_node_max_attempt() ->
+    Node = list_to_atom("tests@some_fake_hostname"),
+    ?assertEqual([], hawk:nodes()),
+    ?assertEqual(false, hawk:node_exists(Node)),
+    {ok,Pid} = hawk:add_node(Node, cookie),
+    ?assertEqual([Node], hawk:nodes()),
+    %% Now lets wait more than the configured allowed time ( check setup/0 )
+    timer:sleep(1500),
+    ?assertEqual([], hawk:nodes()),
+    ?assertEqual(false, hawk:node_exists(Node)).
 
 add_node_with_cbs() ->
     {ok, Host} = inet:gethostname(),
@@ -341,6 +370,10 @@ add_node_diff_cbs() ->
 setup() ->
     node_table = ets:new(node_table, [public, named_table, set]),
     node_table2 = ets:new(node_table2, [public, named_table, set]),
+    ok = application:load(hawk),
+    %% Hawk has to at least, give a node +- 1000ms/1Sec chance to connect. ( 10 retry * 100 ms )
+    ok = application:set_env(hawk, connection_retries, 10),
+    ok = application:set_env(hawk, conn_retry_wait, 100),
     ok = application:start(hawk),
     do_slave_start().
 

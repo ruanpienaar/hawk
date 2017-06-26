@@ -174,8 +174,16 @@ do_rem_conn(ConnectingPid, _, _, 0) ->
 do_rem_conn(ConnectingPid, Node, Cookie, RetryCount) -> %% Find a more ellegant way of waiting...
     case ((erlang:set_cookie(Node,Cookie)) andalso (net_kernel:connect_node(Node))) of
         false ->
-            timer:sleep(application:get_env(hawk, conn_retry_wait, 50)),
-            do_rem_conn(ConnectingPid, Node, Cookie, RetryCount-1);
+            Wait = application:get_env(hawk, conn_retry_wait, 50),
+            % timer:sleep(application:get_env(hawk, conn_retry_wait, 50)),
+            receive
+                {call,_,ReqPid} ->
+                ReqPid ! {response, connecting2},
+                do_rem_conn(ConnectingPid, Node, Cookie, RetryCount-1)
+            after
+                Wait ->
+                    do_rem_conn(ConnectingPid, Node, Cookie, RetryCount-1)
+            end;
         true ->
             error_logger:info_msg("Node ~p connected...", [Node]),
             ConnectingPid ! connected

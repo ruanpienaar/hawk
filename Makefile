@@ -1,6 +1,6 @@
 .PHONY: compile get-deps update-deps test clean deep-clean
 
-compile: get-deps update-deps
+compile: rebar get-deps update-deps
 	@rebar compile
 
 get-deps:
@@ -30,3 +30,6 @@ buildplt: setup_dialyzer
 
 checkplt: buildplt
 	@rebar skip_deps=true check-plt
+
+rebar:
+	@ls rebar || wget https://raw.github.com/wiki/rebar/rebar/rebar && chmod u+x rebar

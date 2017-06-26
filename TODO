@@ -1,0 +1,1 @@
+- hawk can take a list of sys.config nodes, and automatically connect to them on startup ( migrate this feature from goanna )

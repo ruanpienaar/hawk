@@ -178,7 +178,7 @@ do_rem_conn(ConnectingPid, Node, Cookie, RetryCount) -> %% Find a more ellegant 
             % timer:sleep(application:get_env(hawk, conn_retry_wait, 50)),
             receive
                 {call,_,ReqPid} ->
-                ReqPid ! {response, connecting2},
+                ReqPid ! {response, connecting},
                 do_rem_conn(ConnectingPid, Node, Cookie, RetryCount-1)
             after
                 Wait ->

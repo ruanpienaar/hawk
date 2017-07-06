@@ -8,6 +8,19 @@
          delete_child/1
 ]).
 
+-type start_child_return() ::
+    {ok, pid()} |
+    {error, already_present} |
+    {error, {already_started, pid()}}.
+
+-type delete_child_return() ::
+    ok | {error, no_such_node}.
+
+-export_types([
+    start_child_return/0,
+    delete_child_return/0
+]).
+
 %% the supervised process' id is Node.
 
 %% Supervisor callbacks
@@ -30,17 +43,18 @@
 start_link() ->
     supervisor:start_link({local, ?MODULE}, ?MODULE, []).
 
+-spec start_child(atom(), atom(), list(), list())
+    -> start_child_return().
 start_child(Node, Cookie, ConnectedCallback, DisconnectedCallback)
-    when is_atom(Node), is_atom(Cookie), is_list(ConnectedCallback), is_list(DisconnectedCallback) ->
-    case whereis(Node) of
-        undefined ->
-            supervisor:start_child(?MODULE,
-                ?CHILD(Node, hawk_node, worker, [Node, Cookie, ConnectedCallback, DisconnectedCallback])
-            );
-        Pid ->
-            {error,{already_started,Pid}}
-    end.
+    when is_atom(Node),
+         is_atom(Cookie),
+         is_list(ConnectedCallback),
+         is_list(DisconnectedCallback) ->
+    supervisor:start_child(?MODULE,
+        ?CHILD(Node, hawk_node, worker, [Node, Cookie, ConnectedCallback, DisconnectedCallback])
+    ).
 
+-spec delete_child(atom()) -> delete_child_return().
 delete_child(Node) when is_atom(Node) ->
     case whereis(Node) of
         undefined ->

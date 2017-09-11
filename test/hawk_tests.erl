@@ -3,7 +3,7 @@
 -include_lib("eunit/include/eunit.hrl").
 
 api_test_() ->
-    {setup,
+    {foreach,
         fun setup/0,
         fun cleanup/1,
         [
@@ -46,16 +46,17 @@ hawk_nodes() ->
     ?assertEqual([], hawk:nodes()).
 
 hawk_node_exists() ->
-    {ok, Host} = inet:gethostname(),
-    Node = list_to_atom("tests@"++Host),
+    Node = 'test1@localhost',
     ?assertEqual(false, hawk:node_exists(Node)).
 
 add_node() ->
-    {ok, Host} = inet:gethostname(),
-    Node = list_to_atom("tests@"++Host),
+    ?debugFmt("add node test start.........", []),
+    Node = 'test1@localhost',
+    Cookie = cookie,
+    %?debugFmt("Cookie : ~p~n", [Cookie]),
     ?assertEqual([], hawk:nodes()),
     ?assertEqual(false, hawk:node_exists(Node)),
-    {ok,Pid} = hawk:add_node(Node, cookie),
+    {ok,Pid} = hawk:add_node(Node, Cookie),
     ?assertEqual([Node], hawk:nodes()),
     ?assertEqual(
         {ok,Pid,[]},
@@ -64,38 +65,42 @@ add_node() ->
     ?assertEqual(ok, hawk:remove_node(Node)).
 
 add_node_duplicate() ->
-    {ok, Host} = inet:gethostname(),
-    Node = list_to_atom("tests@"++Host),
+    Node = 'test1@localhost',
+    Cookie = cookie,
     ?assertEqual([], hawk:nodes()),
     ?assertEqual(false, hawk:node_exists(Node)),
-    {ok,Pid} = hawk:add_node(Node, cookie),
+    {ok,Pid} = hawk:add_node(Node, Cookie),
     ?assertEqual([Node], hawk:nodes()),
     ?assertEqual(
         {ok,Pid,[]},
         keep_calling(10, fun() -> hawk:node_exists(Node) end)
     ),
-    {error,{already_started,Pid}} = hawk:add_node(Node, cookie),
+    {error,{already_started,Pid}} = hawk:add_node(Node, Cookie),
     ?assertEqual(ok, hawk:remove_node(Node)).
 
 add_node_max_attempt() ->
+    ok = application:set_env(hawk, connection_retries, 2),
+    ok = application:set_env(hawk, conn_retry_wait, 10),
     Node = list_to_atom("tests@some_fake_hostname"),
     ?assertEqual([], hawk:nodes()),
     ?assertEqual(false, hawk:node_exists(Node)),
-    {ok,Pid} = hawk:add_node(Node, cookie),
+    {ok,Pid} = hawk:add_node(Node, fake_cookie),
     ?assertEqual([Node], hawk:nodes()),
     %% Now lets wait more than the configured allowed time ( check setup/0 )
     timer:sleep(1500),
     ?assertEqual([], hawk:nodes()),
-    ?assertEqual(false, hawk:node_exists(Node)).
+    ?assertEqual(false, hawk:node_exists(Node)),
+    ok = application:set_env(hawk, connection_retries, 600),
+    ok = application:set_env(hawk, conn_retry_wait, 100).
 
 add_node_with_cbs() ->
-    {ok, Host} = inet:gethostname(),
-    Node = list_to_atom("tests@"++Host),
+    Node = 'test1@localhost',
+    Cookie = cookie,
     ?assertEqual([], hawk:nodes()),
     ?assertEqual(false, hawk:node_exists(Node)),
     ConnF = fun() -> node_connected(Node) end,
     DisConnF = fun() -> node_disconnected(Node) end,
-    {ok,Pid} = hawk:add_node(Node, cookie,
+    {ok,Pid} = hawk:add_node(Node, Cookie,
         [{connected, ConnF}],
         [{disconnected, DisConnF}]
     ),
@@ -104,16 +109,26 @@ add_node_with_cbs() ->
         {ok,Pid,[connected,disconnected]},
         keep_calling(10, fun() -> hawk:node_exists(Node) end)
     ),
+    ?assertMatch(
+        {ok, #{conn_cb_list :=
+            [{connected,ConnF}],
+           conn_retry_wait := 1000,connected := false,
+           connection_retries := 9,cookie := cookie,
+           disc_cb_list := [{disconnected,DisConnF}],
+           node := 'test1@localhost'}
+        },
+        hawk:node_state(Node)
+    ),
     ?assertEqual([{Node,0}], check_node_table(Node)),
     ?assertEqual(ok, hawk:remove_node(Node)),
     ?assertEqual([], check_node_table(Node)).
 
 add_connect_callback() ->
-    {ok, Host} = inet:gethostname(),
-    Node = list_to_atom("tests@"++Host),
+    Node = 'test1@localhost',
+    Cookie = cookie,
     ?assertEqual([], hawk:nodes()),
     ?assertEqual(false, hawk:node_exists(Node)),
-    {ok,Pid} = hawk:add_node(Node, cookie),
+    {ok,Pid} = hawk:add_node(Node, Cookie),
     ?assertEqual([Node], hawk:nodes()),
     ?assertEqual(
         {ok,Pid,[]},
@@ -125,13 +140,13 @@ add_connect_callback() ->
     ?assertEqual(ok, hawk:remove_node(Node)).
 
 remove_connect_callback() ->
-    {ok, Host} = inet:gethostname(),
-    Node = list_to_atom("tests@"++Host),
+    Node = 'test1@localhost',
+    Cookie = cookie,
     ?assertEqual([], hawk:nodes()),
     ?assertEqual(false, hawk:node_exists(Node)),
     ConnF = fun() -> node_connected(Node) end,
     DisConnF = fun() -> node_disconnected(Node) end,
-    {ok,Pid} = hawk:add_node(Node, cookie,
+    {ok,Pid} = hawk:add_node(Node, Cookie,
         [{connected, ConnF}],
         [{disconnected, DisConnF}]
     ),
@@ -146,11 +161,11 @@ remove_connect_callback() ->
     ?assertEqual([], check_node_table(Node)).
 
 add_disconnect_callback() ->
-    {ok, Host} = inet:gethostname(),
-    Node = list_to_atom("tests@"++Host),
+    Node = 'test1@localhost',
+    Cookie = cookie,
     ?assertEqual([], hawk:nodes()),
     ?assertEqual(false, hawk:node_exists(Node)),
-    {ok,Pid} = hawk:add_node(Node, cookie),
+    {ok,Pid} = hawk:add_node(Node, Cookie),
     ?assertEqual([Node], hawk:nodes()),
     ?assertEqual(
         {ok,Pid,[]},
@@ -162,13 +177,13 @@ add_disconnect_callback() ->
     ?assertEqual(ok, hawk:remove_node(Node)).
 
 remove_disconnect_callback() ->
-    {ok, Host} = inet:gethostname(),
-    Node = list_to_atom("tests@"++Host),
+    Node = 'test1@localhost',
+    Cookie = cookie,
     ?assertEqual([], hawk:nodes()),
     ?assertEqual(false, hawk:node_exists(Node)),
     ConnF = fun() -> node_connected(Node) end,
     DisConnF = fun() -> node_disconnected(Node) end,
-    {ok,Pid} = hawk:add_node(Node, cookie,
+    {ok,Pid} = hawk:add_node(Node, Cookie,
         [{connected, ConnF}],
         [{disconnected, DisConnF}]
     ),
@@ -183,14 +198,14 @@ remove_disconnect_callback() ->
     ?assertEqual([{Node,0}], check_node_table(Node)).
 
 remove_node() ->
-    {ok, Host} = inet:gethostname(),
-    Node = list_to_atom("tests@"++Host),
+    Node = 'test1@localhost',
+    Cookie = cookie,
 
     ?assertEqual({error,no_such_node}, hawk:remove_node(Node)),
 
     ?assertEqual([], hawk:nodes()),
     ?assertEqual(false, hawk:node_exists(Node)),
-    {ok,Pid} = hawk:add_node(Node, cookie),
+    {ok,Pid} = hawk:add_node(Node, Cookie),
     ?assertEqual([Node], hawk:nodes()),
     ?assertEqual(
         {ok,Pid,[]},
@@ -201,36 +216,34 @@ remove_node() ->
     ?assertEqual(false, hawk:node_exists(Node)).
 
 node_state() ->
-    {ok, Host} = inet:gethostname(),
-    Node = list_to_atom("tests@"++Host),
+    Node = 'test1@localhost',
+    Cookie = cookie,
     ?assertEqual([], hawk:nodes()),
     ?assertEqual(false, hawk:node_exists(Node)),
-    {ok,Pid} = hawk:add_node(Node, cookie),
+    {ok,Pid} = hawk:add_node(Node, Cookie),
     ?assertEqual([Node], hawk:nodes()),
     ?assertEqual(
         {ok,Pid,[]},
         keep_calling(10, fun() -> hawk:node_exists(Node) end)
     ),
     {ok,NS} = hawk:node_state(Node),
-    #{ do_rem_conn_pid := DoRemConnPid } = NS,
-    ?assertEqual({ok,#{conn_cb_list => [],
-                       connected => true,
-                       cookie => cookie,
-                       disc_cb_list => [],
-                       do_rem_conn_pid => DoRemConnPid,
-                       node => Node}}, hawk:node_state(Node)),
+    ?assertMatch({ok,#{conn_cb_list := [],
+                       conn_retry_wait := 1000,
+                       connected := false,
+                       connection_retries := 9,
+                       cookie := cookie,
+                       disc_cb_list := [],
+                       node := Node}}, hawk:node_state(Node)),
     ?assertEqual(ok, hawk:remove_node(Node)).
 
 %%--------------------------------------------------------
 
 node_connect_disconnect() ->
-    % {ok, Host} = inet:gethostname(),
-    % Node = list_to_atom("tests@"++Host),
     % ?assertEqual([], hawk:nodes()),
     % ?assertEqual(false, hawk:node_exists(Node)),
     % ConnF = fun() -> node_connected(Node) end,
     % DisConnF = fun() -> node_disconnected(Node) end,
-    % {ok,Pid} = hawk:add_node(Node, cookie,
+    % {ok,Pid} = hawk:add_node(Node, Cookie,
     %     [{connected, ConnF}],
     %     [{disconnected, DisConnF}]
     % ),
@@ -266,11 +279,11 @@ node_connect_disconnect() ->
 
 add_node_same_cbs() ->
     %% Add node:
-    {ok, Host} = inet:gethostname(),
-    Node = list_to_atom("tests@"++Host),
+    Node = 'test1@localhost',
+    Cookie = cookie,
     ?assertEqual([], hawk:nodes()),
     ?assertEqual(false, hawk:node_exists(Node)),
-    {ok,Pid} = hawk:add_node(Node, cookie),
+    {ok,Pid} = hawk:add_node(Node, Cookie),
     ?assertEqual([Node], hawk:nodes()),
     ?assertEqual(
         {ok,Pid,[]},
@@ -278,7 +291,7 @@ add_node_same_cbs() ->
     ),
 
     %% add the same node again.
-    {error,{already_started,Pid}} = hawk:add_node(Node, cookie),
+    {error,{already_started,Pid}} = hawk:add_node(Node, Cookie),
     ?assertEqual([Node], hawk:nodes()),
     ?assertEqual(
         {ok,Pid,[]},
@@ -288,7 +301,7 @@ add_node_same_cbs() ->
     %% Do the same as the above 2 steps, also specify callbacks
     ConnF = fun() -> node_connected(Node) end,
     DisConnF = fun() -> node_disconnected(Node) end,
-    {error,{already_started,Pid}} = hawk:add_node(Node, cookie,
+    {error,{already_started,Pid}} = hawk:add_node(Node, Cookie,
         [{connected, ConnF}],
         [{disconnected, DisConnF}]
     ),
@@ -300,7 +313,7 @@ add_node_same_cbs() ->
     ?assertEqual([{Node,0}], check_node_table(Node)),
 
     %% test adding the same callbacks
-    {error,{already_started,Pid}} = hawk:add_node(Node, cookie,
+    {error,{already_started,Pid}} = hawk:add_node(Node, Cookie,
         [{connected, ConnF}],
         [{disconnected, DisConnF}]
     ),
@@ -315,11 +328,11 @@ add_node_same_cbs() ->
 
 add_node_diff_cbs() ->
     %% Add node:
-    {ok, Host} = inet:gethostname(),
-    Node = list_to_atom("tests@"++Host),
+    Node = 'test1@localhost',
+    Cookie = cookie,
     ?assertEqual([], hawk:nodes()),
     ?assertEqual(false, hawk:node_exists(Node)),
-    {ok,Pid} = hawk:add_node(Node, cookie),
+    {ok,Pid} = hawk:add_node(Node, Cookie),
     ?assertEqual([Node], hawk:nodes()),
     ?assertEqual(
         {ok,Pid,[]},
@@ -327,7 +340,7 @@ add_node_diff_cbs() ->
     ),
 
     %% add the same node again.
-    {error,{already_started,Pid}} = hawk:add_node(Node, cookie),
+    {error,{already_started,Pid}} = hawk:add_node(Node, Cookie),
     ?assertEqual([Node], hawk:nodes()),
     ?assertEqual(
         {ok,Pid,[]},
@@ -339,7 +352,7 @@ add_node_diff_cbs() ->
     DisConnF = fun() -> node_disconnected(Node) end,
     ConnF2 = fun() -> node_connected2(Node) end,
     DisConnF2 = fun() -> node_disconnected2(Node) end,
-    {error,{already_started,Pid}} = hawk:add_node(Node, cookie,
+    {error,{already_started,Pid}} = hawk:add_node(Node, Cookie,
         [{connected, ConnF}],
         [{disconnected, DisConnF}]
     ),
@@ -351,7 +364,7 @@ add_node_diff_cbs() ->
     ?assertEqual([{Node,0}], check_node_table(Node)),
 
     %% test adding other callbacks
-    {error,{already_started,Pid}} = hawk:add_node(Node, cookie,
+    {error,{already_started,Pid}} = hawk:add_node(Node, Cookie,
         [{connected, ConnF}, {connected2, ConnF2}],
         [{disconnected, DisConnF}, {disconnected2, DisConnF2}]
     ),
@@ -370,25 +383,45 @@ add_node_diff_cbs() ->
 setup() ->
     node_table = ets:new(node_table, [public, named_table, set]),
     node_table2 = ets:new(node_table2, [public, named_table, set]),
+    % cookie_tbl = ets:new(cookie_tbl, [public, named_table, set]),
     ok = application:load(hawk),
     %% Hawk has to at least, give a node +- 1000ms/1Sec chance to connect. ( 10 retry * 100 ms )
     ok = application:set_env(hawk, connection_retries, 10),
-    ok = application:set_env(hawk, conn_retry_wait, 100),
+    ok = application:set_env(hawk, conn_retry_wait, 1000),
     ok = application:start(hawk),
-    do_slave_start().
+    'tests@localhost' = make_distrib("tests@localhost", shortnames),
+    ok = do_slave_start(),
+    % SlaveCookie = rpc:call(Node, erlang, get_cookie, []),
+    % true = ets:insert(cookie_tbl, {SlaveCookie, Node}),
+    % Node.
+    ok.
 
-cleanup(Node) ->
-    ets:delete(node_table),
-    ets:delete(node_table2),
-    stop_distrib(Node),
-    ok = application:stop(hawk).
+cleanup(ok) ->
+    {ok, Host} = inet:gethostname(),
+    case os:cmd("ps aux | grep \"sname test1\" | grep -v grep | awk '{ print $2 }'") of
+        [] ->
+            ok;
+        PidString ->
+            [] = os:cmd("kill -9 "++(PidString--"\n")),
+            [] = os:cmd("ps aux | grep \"sname test1\" | grep -v grep | awk '{ print $2 }'")
+    end,
+    true = ets:delete(node_table),
+    true = ets:delete(node_table2),
+    ok = net_kernel:stop(),
+    ok = application:stop(hawk),
+    ok = application:unload(hawk).
 %%--------------------------------------------------------
 
 do_slave_start() ->
-    {ok, Host} = inet:gethostname(),
-    make_distrib("tests@"++Host, shortnames),
-    {ok,Node} = slave:start(Host, test1),
-    Node.
+    case os:cmd("ps aux | grep \"sname test1\" | grep -v grep | awk '{ print $2 }'") of
+        [] ->
+            ok;
+        PidString ->
+            [] = os:cmd("kill -9 "++(PidString--"\n")),
+            [] = os:cmd("ps aux | grep \"sname test1\" | grep -v grep | awk '{ print $2 }'")
+    end,
+    [] = os:cmd("erl -sname test1@localhost -setcookie cookie -detached -noinput -noshell"),
+    ok.
 
 -spec make_distrib( NodeName::string()|atom(), NodeType::shortnames | longnames) ->
     {ok, ActualNodeName::atom} | {error, Reason::term()}.
@@ -399,43 +432,53 @@ make_distrib(NodeName, NodeType) ->
         'nonode@nohost' ->
             [] = os:cmd("epmd -daemon"),
             case net_kernel:start([NodeName, NodeType]) of
-                {ok, _Pid} -> node()
+                {ok, _Pid} ->
+                    node()
             end;
         CurrNode ->
             CurrNode
     end.
-
-stop_distrib(Node) ->
-    net_kernel:stop(),
-    slave:stop(Node).
-
 
 keep_calling(0, _) ->
     {error, no_answer};
 keep_calling(Times, F) ->
     case F() of
         {error, connecting} ->
-            timer:sleep(5),
+            timer:sleep(25),
+            % ?debugFmt("..... KEEP ~p CALLING ~p ......~n", [Times, nodes()]),
             keep_calling(Times-1, F);
         Else ->
             Else
     end.
 
 node_connected(Node) ->
+    % ?debugFmt("node_connected(~p) ->~n", [Node]),
     ets:insert(node_table, {Node, 0}).
 
 node_connected2(Node) ->
+    % ?debugFmt("node_connected2(~p) ->~n", [Node]),
     ets:insert(node_table2, {Node, 0}).
 
 node_disconnected(Node) ->
-    io:format("~nNode disconnect~n"),
+    % ?debugFmt("node_disconnected(~p) ->~n", [Node]),
     ets:delete(node_table, Node).
 
 node_disconnected2(Node) ->
+    % ?debugFmt("node_disconnected2(~p) ->~n", [Node]),
     ets:delete(node_table2, Node).
 
 check_node_table(Node) ->
+    % ?debugFmt("check_node_table(~p) ->~n", [Node]),
     ets:lookup(node_table, Node).
 
 check_node_table2(Node) ->
+    % ?debugFmt("check_node_table2(~p) ->~n", [Node]),
     ets:lookup(node_table2, Node).
+
+traceme() ->
+    % dbg:tracer(),
+    % dbg:p(all, call),
+    % dbg:tpl(hawk_node, cx),
+    % dbg:tpl(hawk_node_mon, cx),
+    % dbg:tpl(net_kernel, connect_node, cx),
+    ok.

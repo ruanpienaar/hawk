@@ -8,32 +8,28 @@ start_link(Node, Cookie, ConnectedCallback, DisconnectedCallback) ->
     State = initial_state(Node, Cookie, ConnectedCallback, DisconnectedCallback),
     {ok, proc_lib:spawn_link(fun() ->
         true = erlang:register(Node, self()),
-        connecting(State)
+        ok = hawk_node_mon:add_node(Node,Cookie),
+        do_wait(State)
     end)}.
-
-connecting(#{ connected := false, node := Node, cookie :=
-              Cookie } = State) ->
-    LoopPid = self(),
-    RetryCount = application:get_env(hawk, connection_retries, 1000),
-    P = proc_lib:spawn_link(fun() -> do_rem_conn(LoopPid, Node, Cookie, RetryCount) end),
-    do_wait(State#{do_rem_conn_pid => P}).
 
 %% TODO: maybe configure for auto execute callbacks, based on current state.
 %% sometimes you do not want the callbacks to be executed immediately.
-
-do_wait(#{ connected := false, node := Node, conn_cb_list := CCBL, disc_cb_list := DCBL } = State) ->
+do_wait(#{ connection_retries := ConnTries, node := Node }) when ConnTries =< 0 ->
+    error_logger:info_msg("max connection attempts: dropping ~p soon~n", [Node]),
+    spawn(fun() -> ok = hawk:remove_node(Node) end),
+    deathbed();
+do_wait(#{ connection_retries := ConnTries, conn_retry_wait := ConnTryWait, connected := false,
+           node := Node, cookie := Cookie, conn_cb_list := CCBL, disc_cb_list := DCBL } = State) when ConnTries > 0 ->
+    ((erlang:set_cookie(Node,Cookie)) andalso (net_kernel:connect_node(Node))),
     receive
-        connected ->
+        {nodeup, Node} ->
+            % error_logger:error_msg("do_wait {nodeup, Node} ~p ~p~n", [{nodeup, Node}, erlang:process_info(self(), registered_name)]),
             process_flag(trap_exit, true),
-            true = erlang:monitor_node(Node, true),
             connected_callback(CCBL),
-            loop(State#{connected => true});
-        max_connection_attempts ->
-            error_logger:info_msg("max connection attempts: dropping ~p soon~n", [Node]),
-            % Not sure, but removing it for now, since it was running twice, once for disconnect, and for reaching max attempts
-            % ok = disconnect_or_delete_callback(DCBL),
-            spawn(fun() -> ok = hawk:remove_node(Node) end),
-            deathbed();
+            loop(State);
+        {nodedown, Node} ->
+            % error_logger:error_msg("do_wait {nodedown, Node} ~p ~p~n", [{nodedown, Node}, erlang:process_info(self(), registered_name)]),
+            do_wait(State#{ connected => false, connection_retries => ConnTries-1 });
         %% Not connected yet, cannot call connect callback
         {call, {add_connect_callback, {Name,ConnectCallback}}, ReqPid} when is_function(ConnectCallback) ->
             do_wait(case lists:keyfind(Name, 1, CCBL) of
@@ -67,16 +63,22 @@ do_wait(#{ connected := false, node := Node, conn_cb_list := CCBL, disc_cb_list 
         {'EXIT',Who,shutdown} ->
             do_terminate(Who, DCBL, State, loop);
         Else ->
-            error_logger:error_msg("connecting received:~p~n", [Else]),
+            error_logger:error_msg("do_wait received:~p ~p~n", [Else, erlang:process_info(self(), registered_name)]),
             do_wait(State)
+    after
+        ConnTryWait ->
+            do_wait(State#{connection_retries => ConnTries - 1})
     end.
 
-loop(#{connected := true, conn_cb_list := CCBL, disc_cb_list := DCBL, node := Node} = State) ->
-    #{ do_rem_conn_pid := DoRemConnPid } = State,
+loop(#{conn_cb_list := CCBL, disc_cb_list := DCBL, node := Node} = State) ->
     receive
+        {nodeup, Node} ->
+            % error_logger:error_msg("loop {nodeup, Node} ~p ~p~n", [{nodedown, Node}, erlang:process_info(self(), registered_name)]),
+            loop(State#{connected => true});
         {nodedown, Node} ->
+            % error_logger:error_msg("loop {nodedown, Node} ~p ~p~n", [{nodedown, Node}, erlang:process_info(self(), registered_name)]),
             ok = disconnect_or_delete_callback(DCBL),
-            connecting(State#{ connected => false });
+            do_wait(State#{ connected => false });
         {call, state, ReqPid} ->
             ReqPid ! {response, State},
             loop(State);
@@ -111,10 +113,8 @@ loop(#{connected := true, conn_cb_list := CCBL, disc_cb_list := DCBL, node := No
             loop(State);
         {'EXIT',Who,shutdown} ->
             do_terminate(Who, DCBL, State, loop);
-        {'EXIT',DoRemConnPid,normal} -> %% Connecting proc dies, because it's done/connected ( started with link )
-            loop(State#{do_rem_conn_pid=>undefined});
         Any ->
-            error_logger:error_msg("loop pid recv : ~p~n", [Any]),
+            error_logger:error_msg("loop pid recv : ~p~n", [Any, erlang:process_info(self(), registered_name)]),
             loop(State#{})
     end.
 
@@ -122,7 +122,7 @@ do_terminate(Who, DCBL, State, LoopFunctionName) ->
     error_logger:info_msg(
         "requested shutdown from ~p name:~p~n",
         [Who,erlang:process_info(Who, registered_name)]),
-    case whereis(hawk_sup)==Who of
+    case whereis(hawk_nodes_sup) == Who of
         true ->
             ok = disconnect_or_delete_callback(DCBL);
         false ->
@@ -165,27 +165,8 @@ initial_state(Node, Cookie, ConnectedCallbacks, DisconnectedCallbacks) ->
        node=>Node,
        cookie=>Cookie,
        conn_cb_list=>ConnectedCallbacks,
-       disc_cb_list=>DisconnectedCallbacks
+       disc_cb_list=>DisconnectedCallbacks,
+       %% 600 attempts, at 100ms each, 60 seconds default
+       connection_retries=>application:get_env(hawk, connection_retries, 600),
+       conn_retry_wait=>application:get_env(hawk, conn_retry_wait, 100)
     }.
-
-do_rem_conn(ConnectingPid, _, _, 0) ->
-    ConnectingPid ! max_connection_attempts;
-%% Setting retry count -1, will just always try to reconnect...
-do_rem_conn(ConnectingPid, Node, Cookie, RetryCount) -> %% Find a more ellegant way of waiting...
-    case ((erlang:set_cookie(Node,Cookie)) andalso (net_kernel:connect_node(Node))) of
-        false ->
-            Wait = application:get_env(hawk, conn_retry_wait, 50),
-            % timer:sleep(application:get_env(hawk, conn_retry_wait, 50)),
-            receive
-                {call,_,ReqPid} ->
-                ReqPid ! {response, connecting2},
-                do_rem_conn(ConnectingPid, Node, Cookie, RetryCount-1)
-            after
-                Wait ->
-                    do_rem_conn(ConnectingPid, Node, Cookie, RetryCount-1)
-            end;
-        true ->
-            error_logger:info_msg("Node ~p connected...", [Node]),
-            ConnectingPid ! connected
-    end.
-

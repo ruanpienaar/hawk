@@ -1,5 +1,7 @@
 -module(hawk).
 
+-compile({no_auto_import,[nodes/0]}).
+
 -export([
     start/0,
     stop/0
@@ -14,7 +16,8 @@
     remove_disconnect_callback/2,
     remove_node/1,
     update_cookie/2,
-    node_state/1
+    node_state/1,
+    connected_nodes/0
 ]).
 
 %% As guidance template functions
@@ -43,7 +46,7 @@ stop() ->
 
 -spec nodes() -> list().
 nodes() ->
-    [ N || {N,_,worker,[hawk_node]} <- supervisor:which_children(hawk_sup) ].
+    [ N || {N,_,worker,[hawk_node]} <- supervisor:which_children(hawk_nodes_sup) ].
 
 -spec node_exists(atom()) -> false | callback_names_return().
 node_exists(Node) ->
@@ -55,7 +58,7 @@ node_exists(Node) ->
     end.
 
 -spec add_node(atom(), atom())
-    -> hawk_sup:start_child_return() |
+    -> hawk_nodes_sup:start_child_return() |
        {error,{already_started,pid()}}.
 add_node(Node, Cookie) ->
     case node_exists(Node) of
@@ -66,13 +69,13 @@ add_node(Node, Cookie) ->
     end.
 
 -spec add_node(atom(), atom(), list(), list())
-    -> hawk_sup:start_child_return().
+    -> hawk_nodes_sup:start_child_return().
 %% TODO: double check the format of the callback
 add_node(Node, Cookie, ConnectedCallback, DisconnectedCallback)
         when is_atom(Node), is_atom(Cookie), is_list(ConnectedCallback), is_list(DisconnectedCallback) ->
     case node_exists(Node) of
         false ->
-            hawk_sup:start_child(Node, Cookie, ConnectedCallback, DisconnectedCallback);
+            hawk_nodes_sup:start_child(Node, Cookie, ConnectedCallback, DisconnectedCallback);
         {ok, Pid, _Callbacks} ->
             ok = lists:foreach(fun({Name,ConnectCallback}) ->
                 %% hawk_node handles the dups
@@ -105,9 +108,9 @@ remove_connect_callback(Node, Name) ->
 remove_disconnect_callback(Node, Name) ->
     call(Node, {remove_disconnect_callback, Name}).
 
--spec remove_node(atom()) -> hawk_sup:delete_child_return().
+-spec remove_node(atom()) -> hawk_nodes_sup:delete_child_return().
 remove_node(Node) ->
-    hawk_sup:delete_child(Node).
+    hawk_nodes_sup:delete_child(Node).
 
 update_cookie(_Node, _NewCookie) ->
     ok.
@@ -126,6 +129,13 @@ callback_names(Pid, Node) ->
         Else ->
             Else
     end.
+
+connected_nodes() ->
+    lists:filter(fun(Node) ->
+        node_state(Node) =/= {error,connecting}
+    end, nodes()).
+
+%%-------------------------------------------------------------------------------------------
 
 -spec call(atom(), hawk_node_cmd()) -> hawk_node_call_return().
 call(Node, Cmd) ->

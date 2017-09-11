@@ -166,7 +166,6 @@ initial_state(Node, Cookie, ConnectedCallbacks, DisconnectedCallbacks) ->
        cookie=>Cookie,
        conn_cb_list=>ConnectedCallbacks,
        disc_cb_list=>DisconnectedCallbacks,
-       %% 600 attempts, at 100ms each, 60 seconds default
        connection_retries=>application:get_env(hawk, connection_retries, 600),
        conn_retry_wait=>application:get_env(hawk, conn_retry_wait, 100)
     }.

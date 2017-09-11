@@ -444,7 +444,7 @@ keep_calling(0, _) ->
 keep_calling(Times, F) ->
     case F() of
         {error, connecting} ->
-            timer:sleep(25),
+            timer:sleep(250),
             % ?debugFmt("..... KEEP ~p CALLING ~p ......~n", [Times, nodes()]),
             keep_calling(Times-1, F);
         Else ->

@@ -40,32 +40,33 @@ api_test_() ->
         ]
     }.
 
+-define(TEST_NODE, 'hawk_tests@localhost').
+
 %%--------------------------------------------------------
 
 hawk_nodes() ->
     ?assertEqual([], hawk:nodes()).
 
 hawk_node_exists() ->
-    Node = 'test1@localhost',
+    Node = ?TEST_NODE,
     ?assertEqual(false, hawk:node_exists(Node)).
 
 add_node() ->
     ?debugFmt("add node test start.........", []),
-    Node = 'test1@localhost',
+    Node = ?TEST_NODE,
     Cookie = cookie,
-    %?debugFmt("Cookie : ~p~n", [Cookie]),
     ?assertEqual([], hawk:nodes()),
     ?assertEqual(false, hawk:node_exists(Node)),
     {ok,Pid} = hawk:add_node(Node, Cookie),
     ?assertEqual([Node], hawk:nodes()),
     ?assertEqual(
         {ok,Pid,[]},
-        keep_calling(10, fun() -> hawk:node_exists(Node) end)
+        keep_calling(1000, fun() -> hawk:node_exists(Node) end)
     ),
     ?assertEqual(ok, hawk:remove_node(Node)).
 
 add_node_duplicate() ->
-    Node = 'test1@localhost',
+    Node = ?TEST_NODE,
     Cookie = cookie,
     ?assertEqual([], hawk:nodes()),
     ?assertEqual(false, hawk:node_exists(Node)),
@@ -94,7 +95,7 @@ add_node_max_attempt() ->
     ok = application:set_env(hawk, conn_retry_wait, 100).
 
 add_node_with_cbs() ->
-    Node = 'test1@localhost',
+    Node = ?TEST_NODE,
     Cookie = cookie,
     ?assertEqual([], hawk:nodes()),
     ?assertEqual(false, hawk:node_exists(Node)),
@@ -115,7 +116,7 @@ add_node_with_cbs() ->
            conn_retry_wait := 1000,connected := false,
            connection_retries := 9,cookie := cookie,
            disc_cb_list := [{disconnected,DisConnF}],
-           node := 'test1@localhost'}
+           node := TEST_NODE}
         },
         hawk:node_state(Node)
     ),
@@ -124,7 +125,7 @@ add_node_with_cbs() ->
     ?assertEqual([], check_node_table(Node)).
 
 add_connect_callback() ->
-    Node = 'test1@localhost',
+    Node = ?TEST_NODE,
     Cookie = cookie,
     ?assertEqual([], hawk:nodes()),
     ?assertEqual(false, hawk:node_exists(Node)),
@@ -140,7 +141,7 @@ add_connect_callback() ->
     ?assertEqual(ok, hawk:remove_node(Node)).
 
 remove_connect_callback() ->
-    Node = 'test1@localhost',
+    Node = ?TEST_NODE,
     Cookie = cookie,
     ?assertEqual([], hawk:nodes()),
     ?assertEqual(false, hawk:node_exists(Node)),
@@ -161,7 +162,7 @@ remove_connect_callback() ->
     ?assertEqual([], check_node_table(Node)).
 
 add_disconnect_callback() ->
-    Node = 'test1@localhost',
+    Node = ?TEST_NODE,
     Cookie = cookie,
     ?assertEqual([], hawk:nodes()),
     ?assertEqual(false, hawk:node_exists(Node)),
@@ -177,7 +178,7 @@ add_disconnect_callback() ->
     ?assertEqual(ok, hawk:remove_node(Node)).
 
 remove_disconnect_callback() ->
-    Node = 'test1@localhost',
+    Node = ?TEST_NODE,
     Cookie = cookie,
     ?assertEqual([], hawk:nodes()),
     ?assertEqual(false, hawk:node_exists(Node)),
@@ -198,7 +199,7 @@ remove_disconnect_callback() ->
     ?assertEqual([{Node,0}], check_node_table(Node)).
 
 remove_node() ->
-    Node = 'test1@localhost',
+    Node = ?TEST_NODE,
     Cookie = cookie,
 
     ?assertEqual({error,no_such_node}, hawk:remove_node(Node)),
@@ -216,7 +217,7 @@ remove_node() ->
     ?assertEqual(false, hawk:node_exists(Node)).
 
 node_state() ->
-    Node = 'test1@localhost',
+    Node = ?TEST_NODE,
     Cookie = cookie,
     ?assertEqual([], hawk:nodes()),
     ?assertEqual(false, hawk:node_exists(Node)),
@@ -279,7 +280,7 @@ node_connect_disconnect() ->
 
 add_node_same_cbs() ->
     %% Add node:
-    Node = 'test1@localhost',
+    Node = ?TEST_NODE,
     Cookie = cookie,
     ?assertEqual([], hawk:nodes()),
     ?assertEqual(false, hawk:node_exists(Node)),
@@ -328,7 +329,7 @@ add_node_same_cbs() ->
 
 add_node_diff_cbs() ->
     %% Add node:
-    Node = 'test1@localhost',
+    Node = ?TEST_NODE,
     Cookie = cookie,
     ?assertEqual([], hawk:nodes()),
     ?assertEqual(false, hawk:node_exists(Node)),
@@ -381,9 +382,9 @@ add_node_diff_cbs() ->
 %%--------------------------------------------------------
 
 setup() ->
+    traceme(),
     node_table = ets:new(node_table, [public, named_table, set]),
     node_table2 = ets:new(node_table2, [public, named_table, set]),
-    % cookie_tbl = ets:new(cookie_tbl, [public, named_table, set]),
     ok = application:load(hawk),
     %% Hawk has to at least, give a node +- 1000ms/1Sec chance to connect. ( 10 retry * 100 ms )
     ok = application:set_env(hawk, connection_retries, 10),
@@ -391,36 +392,36 @@ setup() ->
     ok = application:start(hawk),
     'tests@localhost' = make_distrib("tests@localhost", shortnames),
     ok = do_slave_start(),
-    % SlaveCookie = rpc:call(Node, erlang, get_cookie, []),
-    % true = ets:insert(cookie_tbl, {SlaveCookie, Node}),
-    % Node.
     ok.
 
 cleanup(ok) ->
+    %timer:sleep(1000),
     {ok, Host} = inet:gethostname(),
-    case os:cmd("ps aux | grep \"sname test1\" | grep -v grep | awk '{ print $2 }'") of
+    case os:cmd("ps aux | grep \"sname "++atom_to_list(?TEST_NODE)++"\" | grep -v grep | awk '{ print $2 }'") of
         [] ->
             ok;
         PidString ->
             [] = os:cmd("kill -9 "++(PidString--"\n")),
-            [] = os:cmd("ps aux | grep \"sname test1\" | grep -v grep | awk '{ print $2 }'")
+            [] = os:cmd("ps aux | grep \"sname "++atom_to_list(?TEST_NODE)++"\" | grep -v grep | awk '{ print $2 }'")
     end,
     true = ets:delete(node_table),
     true = ets:delete(node_table2),
     ok = net_kernel:stop(),
+    %timer:sleep(50),
     ok = application:stop(hawk),
     ok = application:unload(hawk).
+
 %%--------------------------------------------------------
 
 do_slave_start() ->
-    case os:cmd("ps aux | grep \"sname test1\" | grep -v grep | awk '{ print $2 }'") of
+    case os:cmd("ps aux | grep \"sname "++atom_to_list(?TEST_NODE)++"\" | grep -v grep | awk '{ print $2 }'") of
         [] ->
             ok;
         PidString ->
             [] = os:cmd("kill -9 "++(PidString--"\n")),
-            [] = os:cmd("ps aux | grep \"sname test1\" | grep -v grep | awk '{ print $2 }'")
+            [] = os:cmd("ps aux | grep \"sname "++atom_to_list(?TEST_NODE)++"\" | grep -v grep | awk '{ print $2 }'")
     end,
-    [] = os:cmd("erl -sname test1@localhost -setcookie cookie -detached -noinput -noshell"),
+    [] = os:cmd("erl -sname "++atom_to_list(?TEST_NODE)++" -setcookie cookie -detached -noinput -noshell"),
     ok.
 
 -spec make_distrib( NodeName::string()|atom(), NodeType::shortnames | longnames) ->
@@ -476,9 +477,9 @@ check_node_table2(Node) ->
     ets:lookup(node_table2, Node).
 
 traceme() ->
-    % dbg:tracer(),
-    % dbg:p(all, call),
-    % dbg:tpl(hawk_node, cx),
+    %dbg:tracer(),
+    %dbg:p(all, call),
+    %dbg:tpl(hawk_node, cx),
     % dbg:tpl(hawk_node_mon, cx),
     % dbg:tpl(net_kernel, connect_node, cx),
     ok.

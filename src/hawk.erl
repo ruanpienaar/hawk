@@ -63,7 +63,7 @@ node_exists(Node) ->
 add_node(Node, Cookie) ->
     case node_exists(Node) of
         false ->
-            add_node(Node, Cookie, [], []);
+            hawk_nodes_sup:start_child(Node, Cookie, [], []);
         {ok, Pid, _Callbacks} ->
             {error,{already_started,Pid}}
     end.

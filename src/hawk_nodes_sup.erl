@@ -9,7 +9,8 @@
     init/1,
     start_link/0,
     start_child/4,
-    delete_child/1
+    delete_child/1,
+    id/1
 ]).
 
 -type start_child_return() ::
@@ -52,3 +53,7 @@ delete_child(Node) when is_atom(Node) ->
             ok = supervisor:terminate_child(?MODULE, Node),
             ok = supervisor:delete_child(?MODULE, Node)
     end.
+
+id(Node) ->
+    % list_to_atom("hawk_node_"++atom_to_list(Node)).
+    Node.

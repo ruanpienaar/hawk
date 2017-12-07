@@ -4,13 +4,26 @@
     start_link/4
 ]).
 
+%% TODO:
+%% - The ReqPid replies has to be changed to only reply ( ReqPid ! ok ) when the state has changed. ( investigate )
+
 start_link(Node, Cookie, ConnectedCallback, DisconnectedCallback) ->
     State = initial_state(Node, Cookie, ConnectedCallback, DisconnectedCallback),
     {ok, proc_lib:spawn_link(fun() ->
-        true = erlang:register(Node, self()),
+        true = erlang:register(hawk_nodes_sup:id(Node), self()),
         ok = hawk_node_mon:add_node(Node,Cookie),
         do_wait(State)
     end)}.
+
+initial_state(Node, Cookie, ConnectedCallbacks, DisconnectedCallbacks) ->
+    #{ connected=>false,
+       node=>Node,
+       cookie=>Cookie,
+       conn_cb_list=>ConnectedCallbacks,
+       disc_cb_list=>DisconnectedCallbacks,
+       connection_retries=>application:get_env(hawk, connection_retries, 600),
+       conn_retry_wait=>application:get_env(hawk, conn_retry_wait, 100)
+    }.
 
 %% TODO: maybe configure for auto execute callbacks, based on current state.
 %% sometimes you do not want the callbacks to be executed immediately.
@@ -159,13 +172,3 @@ disconnect_or_delete_callback(DCBL) ->
                     [C, E, erlang:get_stacktrace()])
         end
     end, DCBL).
-
-initial_state(Node, Cookie, ConnectedCallbacks, DisconnectedCallbacks) ->
-    #{ connected=>false,
-       node=>Node,
-       cookie=>Cookie,
-       conn_cb_list=>ConnectedCallbacks,
-       disc_cb_list=>DisconnectedCallbacks,
-       connection_retries=>application:get_env(hawk, connection_retries, 600),
-       conn_retry_wait=>application:get_env(hawk, conn_retry_wait, 100)
-    }.

@@ -22,7 +22,8 @@ initial_state(Node, Cookie, ConnectedCallbacks, DisconnectedCallbacks) ->
        conn_cb_list=>ConnectedCallbacks,
        disc_cb_list=>DisconnectedCallbacks,
        connection_retries=>application:get_env(hawk, connection_retries, 600),
-       conn_retry_wait=>application:get_env(hawk, conn_retry_wait, 100)
+       conn_retry_wait=>application:get_env(hawk, conn_retry_wait, 100),
+       connected_area=>undefined
     }.
 
 %% TODO: maybe configure for auto execute callbacks, based on current state.
@@ -33,13 +34,25 @@ do_wait(#{ connection_retries := ConnTries, node := Node }) when ConnTries =< 0 
     deathbed();
 do_wait(#{ connection_retries := ConnTries, conn_retry_wait := ConnTryWait, connected := false,
            node := Node, cookie := Cookie, conn_cb_list := CCBL, disc_cb_list := DCBL } = State) when ConnTries > 0 ->
-    ((erlang:set_cookie(Node,Cookie)) andalso (net_kernel:connect_node(Node))),
+    true = erlang:set_cookie(Node,Cookie),
+
+    % Hidden/Slave Nodes are not sending {nodeup, ...} messages....
+
+    case net_kernel:connect_node(Node) of
+        true ->
+            process_flag(trap_exit, true),
+            connected_callback(CCBL),
+            loop(State#{ connected => true, connected_area => net_kernel_connect });
+        false ->
+            ok
+    end,
+
     receive
         {nodeup, Node} ->
             % error_logger:error_msg("do_wait {nodeup, Node} ~p ~p~n", [{nodeup, Node}, erlang:process_info(self(), registered_name)]),
             process_flag(trap_exit, true),
             connected_callback(CCBL),
-            loop(State);
+            loop(State#{ connected => true, connected_area => nodeup_msg });
         {nodedown, Node} ->
             % error_logger:error_msg("do_wait {nodedown, Node} ~p ~p~n", [{nodedown, Node}, erlang:process_info(self(), registered_name)]),
             do_wait(State#{ connected => false, connection_retries => ConnTries-1 });
@@ -73,7 +86,10 @@ do_wait(#{ connection_retries := ConnTries, conn_retry_wait := ConnTryWait, conn
         {call,_,ReqPid} ->
             ReqPid ! {response, connecting},
             do_wait(State);
-        {'EXIT',Who,shutdown} ->
+        {system, From, _Msg = get_state} ->
+            gen:reply(From, State),
+            loop(State);
+        {'EXIT', Who, shutdown} ->
             do_terminate(Who, DCBL, State, loop);
         Else ->
             error_logger:error_msg("do_wait received:~p ~p~n", [Else, erlang:process_info(self(), registered_name)]),
@@ -87,7 +103,7 @@ loop(#{conn_cb_list := CCBL, disc_cb_list := DCBL, node := Node} = State) ->
     receive
         {nodeup, Node} ->
             % error_logger:error_msg("loop {nodeup, Node} ~p ~p~n", [{nodedown, Node}, erlang:process_info(self(), registered_name)]),
-            loop(State#{connected => true});
+            loop(State);
         {nodedown, Node} ->
             % error_logger:error_msg("loop {nodedown, Node} ~p ~p~n", [{nodedown, Node}, erlang:process_info(self(), registered_name)]),
             ok = disconnect_or_delete_callback(DCBL),
@@ -124,7 +140,10 @@ loop(#{conn_cb_list := CCBL, disc_cb_list := DCBL, node := Node} = State) ->
         {call, callbacks, ReqPid} ->
             ReqPid ! {response, {CCBL, DCBL}},
             loop(State);
-        {'EXIT',Who,shutdown} ->
+        {system, From, _Msg = get_state} ->
+            gen:reply(From, State),
+            loop(State);
+        {'EXIT', Who, shutdown} ->
             do_terminate(Who, DCBL, State, loop);
         Any ->
             error_logger:error_msg("loop pid recv : ~p~n", [Any, erlang:process_info(self(), registered_name)]),

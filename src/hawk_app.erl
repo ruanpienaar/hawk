@@ -10,6 +10,12 @@
 %% ===================================================================
 
 start(_StartType, _StartArgs) ->
+
+    % dbg:tracer(),
+    % dbg:p(all, call),
+    % dbg:tpl(net_kernel, connect, cx),
+
+
     hawk_sup:start_link().
 
 stop(_State) ->

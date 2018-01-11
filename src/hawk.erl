@@ -20,12 +20,6 @@
     connected_nodes/0
 ]).
 
-%% As guidance template functions
--export([
-    connected/2,
-    disconnected/1
-]).
-
 -define(R, hawk_req).
 
 -type hawk_node_call_return() :: timeout | {error, connecting} | {ok, term()}.
@@ -133,7 +127,7 @@ callback_names(Pid, Node) ->
 connected_nodes() ->
     lists:filter(fun(Node) ->
         node_state(Node) =/= {error,connecting}
-    end, nodes()).
+    end, nodes()++nodes(hidden)).
 
 %%-------------------------------------------------------------------------------------------
 
@@ -154,15 +148,3 @@ call(Node, Cmd, Timeout) ->
         Timeout ->
             timeout
     end.
-%% -----------------
-%% Helper callbacks:
-
--spec connected(atom(), atom()) -> ok.
-connected(Node, Cookie) ->
-    fun() -> error_logger:info_msg("Connected!!! ~p ~p ~n", [Node, Cookie]) end.
-
--spec disconnected(atom()) -> ok.
-disconnected(Node) ->
-    fun() -> error_logger:info_msg("disConnected!!! ~p ~n", [Node]) end.
-
-%% -----------------

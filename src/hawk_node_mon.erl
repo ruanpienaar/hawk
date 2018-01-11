@@ -17,19 +17,22 @@ add_node(Node, Cookie) ->
 
 loop(Nodes) ->
     receive
-        M={add_node, Node, _Cookie} ->
+        _M={add_node, Node, _Cookie} ->
             %% io:format("A : ~p~n", [M]),
             true = erlang:monitor_node(Node, true),
             loop([Node|Nodes]);
-        M={nodeup, Node} ->
+        _M={nodeup, Node} ->
             %% io:format("B : ~p~n", [M]),
             whereis(Node) ! {nodeup, Node},
             loop(Nodes);
-        M={nodedown, Node} ->
+        _M={nodedown, Node} ->
             %% io:format("C : ~p~n", [M]),
             whereis(Node) ! {nodedown, Node},
             loop(Nodes);
         A ->
-            %% io:format("D : ~p~n", [A]),
+            error_logger:error_msg(
+                "~p received ~p~n",
+                [?MODULE, A]
+            ),
             loop(Nodes)
     end.

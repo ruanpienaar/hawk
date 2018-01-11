@@ -402,12 +402,12 @@ add_hidden_node() ->
 %%--------------------------------------------------------
 
 setup() ->
-    Hostname = string:strip(os:cmd("hostname"), right, $\n ),
-    EtcHostname = os:cmd("cat /etc/hostname"),
-    ?assertEqual(
-        Hostname,
-        EtcHostname
-    ),
+    % Hostname = string:strip(os:cmd("hostname"), right, $\n ),
+    % EtcHostname = os:cmd("cat /etc/hostname"),
+    % ?assertEqual(
+    %     Hostname,
+    %     EtcHostname
+    % ),
     {ok, Host} = inet:gethostname(),
     traceme(),
     node_table = ets:new(node_table, [public, named_table, set]),

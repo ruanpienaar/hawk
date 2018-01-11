@@ -1,14 +1,13 @@
 .eunit
-deps
 *.o
 *.beam
 *.plt
-deps/*
 *.DS_Store
 *.log
 erl_crash.dump
-Mnesia*
 .rebar
 ebin
 error.log
-rebar
+rebar3
+_build/
+rebar.lock

@@ -11,3 +11,4 @@ error.log
 rebar3
 _build/
 rebar.lock
+TEST-*.xml

@@ -97,7 +97,7 @@ add_node_max_attempt() ->
     Node = list_to_atom("tests@some_fake_hostname"),
     ?assertEqual([], hawk:nodes()),
     ?assertEqual(false, hawk:node_exists(Node)),
-    {ok,Pid} = hawk:add_node(Node, fake_cookie),
+    {ok,_Pid} = hawk:add_node(Node, fake_cookie),
     ?assertEqual([Node], hawk:nodes()),
     %% Now lets wait more than the configured allowed time ( check setup/0 )
     timer:sleep(1500),
@@ -130,7 +130,7 @@ add_node_with_cbs() ->
             connected := true,
             cookie := cookie,
             disc_cb_list := [{disconnected,DisConnF}],
-            node := TEST_NODE}
+            node := Node}
         },
         hawk:node_state(Node)
     ),
@@ -245,7 +245,6 @@ node_state() ->
         {ok,Pid,[]},
         keep_calling(100, fun() -> hawk:node_exists(Node) end)
     ),
-    {ok,NS} = hawk:node_state(Node),
     ?assertMatch({ok,#{conn_cb_list := [],
                        conn_retry_wait := 1000,
                        connected := true,
@@ -421,7 +420,7 @@ setup() ->
     do_slave_start().
 
 cleanup(Slaves) ->
-    {ok, Host} = inet:gethostname(),
+    % {ok, Host} = inet:gethostname(),
     [ ok = slave:stop(SlaveNodeName) || SlaveNodeName <- Slaves ],
     true = ets:delete(node_table),
     true = ets:delete(node_table2),

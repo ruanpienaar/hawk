@@ -1,5 +1,6 @@
 ## Hawk
 [![BuildlsStatus](https://travis-ci.org/ruanpienaar/hawk.svg?branch=master)](https://travis-ci.org/ruanpienaar/hawk)
+[![Coverage Status](https://coveralls.io/repos/github/ruanpienaar/hawk/badge.svg?branch=master)](https://coveralls.io/github/ruanpienaar/hawk?branch=master)
 
 A simple library with the eyesight of a hawk.
 The current implementation connects to a specified node,

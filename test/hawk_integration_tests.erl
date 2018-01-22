@@ -1,4 +1,4 @@
--module(hawk_tests).
+-module(hawk_integration_tests).
 
 -include_lib("kernel/include/inet.hrl").
 -include_lib("eunit/include/eunit.hrl").
@@ -69,9 +69,7 @@ add_node() ->
     ?assertEqual([Node], hawk:nodes()),
     ?assertEqual(
         {ok,Pid,[]},
-        keep_calling(10, fun() ->
-            hawk:node_exists(Node)
-        end)
+        unit_testing:wait_for_next_value(10, fun() -> hawk:node_exists(Node) end, {error, connecting})
     ),
     ?assertEqual([Node], hawk:connected_nodes()),
     ?assertEqual(ok, hawk:remove_node(Node)).
@@ -86,7 +84,7 @@ add_node_duplicate() ->
     ?assertEqual([Node], hawk:nodes()),
     ?assertEqual(
         {ok,Pid,[]},
-        keep_calling(100, fun() -> hawk:node_exists(Node) end)
+        unit_testing:wait_for_next_value(100, fun() -> hawk:node_exists(Node) end, {error, connecting})
     ),
     {error,{already_started,Pid}} = hawk:add_node(Node, Cookie),
     ?assertEqual(ok, hawk:remove_node(Node)).
@@ -121,7 +119,7 @@ add_node_with_cbs() ->
     ?assertEqual([Node], hawk:nodes()),
     ?assertEqual(
         {ok,Pid,[connected,disconnected]},
-        keep_calling(100, fun() -> hawk:node_exists(Node) end)
+        unit_testing:wait_for_next_value(100, fun() -> hawk:node_exists(Node) end, {error, connecting})
     ),
     ?assertMatch(
         {ok, #{
@@ -148,7 +146,7 @@ add_connect_callback() ->
     ?assertEqual([Node], hawk:nodes()),
     ?assertEqual(
         {ok,Pid,[]},
-        keep_calling(100, fun() -> hawk:node_exists(Node) end)
+        unit_testing:wait_for_next_value(100, fun() -> hawk:node_exists(Node) end, {error, connecting})
     ),
     ?assertEqual({ok,updated},
                  hawk:add_connect_callback(Node, {extra_conn_cb,fun() -> node_connected2(Node) end})
@@ -170,7 +168,7 @@ remove_connect_callback() ->
     ?assertEqual([Node], hawk:nodes()),
     ?assertEqual(
         {ok,Pid,[connected,disconnected]},
-        keep_calling(100, fun() -> hawk:node_exists(Node) end)
+        unit_testing:wait_for_next_value(100, fun() -> hawk:node_exists(Node) end, {error, connecting})
     ),
     ?assertEqual([{Node,0}], check_node_table(Node)),
     ?assertEqual({ok,updated}, hawk:remove_connect_callback(Node, connected)),
@@ -187,7 +185,7 @@ add_disconnect_callback() ->
     ?assertEqual([Node], hawk:nodes()),
     ?assertEqual(
         {ok,Pid,[]},
-        keep_calling(100, fun() -> hawk:node_exists(Node) end)
+        unit_testing:wait_for_next_value(100, fun() -> hawk:node_exists(Node) end, {error, connecting})
     ),
     ?assertEqual({ok,updated},
                  hawk:add_disconnect_callback(Node, {extra_conn_cb,fun() -> node_disconnected2(Node) end})
@@ -209,7 +207,7 @@ remove_disconnect_callback() ->
     ?assertEqual([Node], hawk:nodes()),
     ?assertEqual(
         {ok,Pid,[connected,disconnected]},
-        keep_calling(100, fun() -> hawk:node_exists(Node) end)
+        unit_testing:wait_for_next_value(100, fun() -> hawk:node_exists(Node) end, {error, connecting})
     ),
     ?assertEqual([{Node,0}], check_node_table(Node)),
     ?assertEqual({ok,updated}, hawk:remove_disconnect_callback(Node, disconnected)),
@@ -227,7 +225,7 @@ remove_node() ->
     ?assertEqual([Node], hawk:nodes()),
     ?assertEqual(
         {ok,Pid,[]},
-        keep_calling(100, fun() -> hawk:node_exists(Node) end)
+        unit_testing:wait_for_next_value(100, fun() -> hawk:node_exists(Node) end, {error, connecting})
     ),
 
     ?assertEqual(ok, hawk:remove_node(Node)),
@@ -243,7 +241,7 @@ node_state() ->
     ?assertEqual([Node], hawk:nodes()),
     ?assertEqual(
         {ok,Pid,[]},
-        keep_calling(100, fun() -> hawk:node_exists(Node) end)
+        unit_testing:wait_for_next_value(100, fun() -> hawk:node_exists(Node) end, {error, connecting})
     ),
     ?assertMatch({ok,#{conn_cb_list := [],
                        conn_retry_wait := 1000,
@@ -256,41 +254,52 @@ node_state() ->
 %%--------------------------------------------------------
 
 node_connect_disconnect() ->
-    % ?assertEqual([], hawk:nodes()),
-    % ?assertEqual(false, hawk:node_exists(Node)),
-    % ConnF = fun() -> node_connected(Node) end,
-    % DisConnF = fun() -> node_disconnected(Node) end,
-    % {ok,Pid} = hawk:add_node(Node, Cookie,
-    %     [{connected, ConnF}],
-    %     [{disconnected, DisConnF}]
-    % ),
-    % ?assertEqual([Node], hawk:nodes()),
-    % ?assertEqual([{Node,0}], check_node_table(Node)),
-    % ?assertEqual(
-    %     {ok,Pid,[connected,disconnected]},
-    %     keep_calling(100, fun() -> hawk:node_exists(Node) end)
-    % ),
+    {ok, Host} = inet:gethostname(),
+    % start a extra slave
+    [ExtraSlaveNodename] = unit_testing:slaves_setup([{Host, 'extra_slave'}]),
+
+    % connect to the extra slave
+    Node = ExtraSlaveNodename,
+    Cookie = cookie,
+    ?assertEqual([], hawk:nodes()),
+    ?assertEqual(false, hawk:node_exists(Node)),
+    ConnF = fun() -> node_connected(Node) end,
+    DisConnF = fun() -> node_disconnected(Node) end,
+    {ok,Pid} = hawk:add_node(Node, Cookie,
+        [{connected, ConnF}],
+        [{disconnected, DisConnF}]
+    ),
+    ?assertEqual([Node], hawk:nodes()),
+    ?assertEqual(
+        {ok,Pid,[connected,disconnected]},
+        unit_testing:wait_for_next_value(100, fun() -> hawk:node_exists(Node) end, {error, connecting})
+    ),
+    ?assertMatch(
+        {ok, #{
+            conn_cb_list := [{connected,ConnF}],
+            conn_retry_wait := 1000,
+            connected := true,
+            cookie := cookie,
+            disc_cb_list := [{disconnected,DisConnF}],
+            node := Node}
+        },
+        hawk:node_state(Node)
+    ),
+    ?assertEqual([{Node,0}], check_node_table(Node)),
 
 
-    %% Here kill the Node,
+    % check that callback was called
 
-    %% check that disconnect callback ran...
+    % stop the extra slave
+    true = unit_testing:cleanup_slaves([ExtraSlaveNodename]),
 
-    % ?assertEqual([{Node,0}], check_node_table(Node)),
-    % ?assertEqual(ok, hawk:remove_node(Node)),
-    % ?assertEqual([], check_node_table(Node)).
+    % check that discon callback was called
 
-    % whereis(Node) ! {nodedown, Node},
-    % slave:stop(Node),
+    % check that trying to reconnect
 
-    % timer:sleep(1000),
-    % %% The disconnect callback should've removed the entry..
-    % ?assertEqual([], check_node_table(Node)),
-    % ?assertEqual([], hawk:nodes()),
-    % ?assertEqual(false, hawk:node_exists(Node)),
-    % ?assertEqual(ok, hawk:remove_node(Node)),
-
-    % do_slave_start().
+    % Remove the extra slave node
+    ?assertEqual(ok, hawk:remove_node(Node)),
+    ?assertEqual([], check_node_table(Node)),
 
     ok.
 
@@ -304,7 +313,7 @@ add_node_same_cbs() ->
     ?assertEqual([Node], hawk:nodes()),
     ?assertEqual(
         {ok,Pid,[]},
-        keep_calling(100, fun() -> hawk:node_exists(Node) end)
+        unit_testing:wait_for_next_value(100, fun() -> hawk:node_exists(Node) end, {error, connecting})
     ),
 
     %% add the same node again.
@@ -312,7 +321,7 @@ add_node_same_cbs() ->
     ?assertEqual([Node], hawk:nodes()),
     ?assertEqual(
         {ok,Pid,[]},
-        keep_calling(100, fun() -> hawk:node_exists(Node) end)
+        unit_testing:wait_for_next_value(100, fun() -> hawk:node_exists(Node) end, {error, connecting})
     ),
 
     %% Do the same as the above 2 steps, also specify callbacks
@@ -325,7 +334,7 @@ add_node_same_cbs() ->
     ?assertEqual([Node], hawk:nodes()),
     ?assertEqual(
         {ok,Pid,[connected,disconnected]},
-        keep_calling(100, fun() -> hawk:node_exists(Node) end)
+        unit_testing:wait_for_next_value(100, fun() -> hawk:node_exists(Node) end, {error, connecting})
     ),
     ?assertEqual([{Node,0}], check_node_table(Node)),
 
@@ -337,7 +346,7 @@ add_node_same_cbs() ->
     ?assertEqual([Node], hawk:nodes()),
     ?assertEqual(
         {ok,Pid,[connected,disconnected]},
-        keep_calling(100, fun() -> hawk:node_exists(Node) end)
+        unit_testing:wait_for_next_value(100, fun() -> hawk:node_exists(Node) end, {error, connecting})
     ),
     ?assertEqual([{Node,0}], check_node_table(Node)),
 
@@ -353,7 +362,7 @@ add_node_diff_cbs() ->
     ?assertEqual([Node], hawk:nodes()),
     ?assertEqual(
         {ok,Pid,[]},
-        keep_calling(100, fun() -> hawk:node_exists(Node) end)
+        unit_testing:wait_for_next_value(100, fun() -> hawk:node_exists(Node) end, {error, connecting})
     ),
 
     %% add the same node again.
@@ -361,7 +370,7 @@ add_node_diff_cbs() ->
     ?assertEqual([Node], hawk:nodes()),
     ?assertEqual(
         {ok,Pid,[]},
-        keep_calling(100, fun() -> hawk:node_exists(Node) end)
+        unit_testing:wait_for_next_value(100, fun() -> hawk:node_exists(Node) end, {error, connecting})
     ),
 
     %% Do the same as the above 2 steps, also specify callbacks
@@ -376,7 +385,7 @@ add_node_diff_cbs() ->
     ?assertEqual([Node], hawk:nodes()),
     ?assertEqual(
         {ok,Pid,[connected,disconnected]},
-        keep_calling(100, fun() -> hawk:node_exists(Node) end)
+        unit_testing:wait_for_next_value(100, fun() -> hawk:node_exists(Node) end, {error, connecting})
     ),
     ?assertEqual([{Node,0}], check_node_table(Node)),
 
@@ -388,7 +397,7 @@ add_node_diff_cbs() ->
     ?assertEqual([Node], hawk:nodes()),
     ?assertEqual(
         {ok,Pid,[connected2,connected,disconnected2,disconnected]},
-        keep_calling(100, fun() -> hawk:node_exists(Node) end)
+        unit_testing:wait_for_next_value(100, fun() -> hawk:node_exists(Node) end, {error, connecting})
     ),
     ?assertEqual([{Node,0}], check_node_table(Node)),
     ?assertEqual([{Node,0}], check_node_table2(Node)),
@@ -401,14 +410,6 @@ add_hidden_node() ->
 %%--------------------------------------------------------
 
 setup() ->
-    % Hostname = string:strip(os:cmd("hostname"), right, $\n ),
-    % EtcHostname = os:cmd("cat /etc/hostname"),
-    % ?assertEqual(
-    %     Hostname,
-    %     EtcHostname
-    % ),
-    {ok, Host} = inet:gethostname(),
-    traceme(),
     node_table = ets:new(node_table, [public, named_table, set]),
     node_table2 = ets:new(node_table2, [public, named_table, set]),
     ok = application:load(hawk),
@@ -416,53 +417,19 @@ setup() ->
     ok = application:set_env(hawk, connection_retries, 10),
     ok = application:set_env(hawk, conn_retry_wait, 1000),
     ok = application:start(hawk),
-    {ok, _} = make_distrib("hawk_node@"++Host, shortnames),
-    do_slave_start().
+    {ok, Host} = inet:gethostname(),
+    {ok, _} = unit_testing:start_distrib(list_to_atom("hawk_node@"++Host), shortnames, 750),
+    _Slaves = unit_testing:slaves_setup([{Host, ?TEST_NODE_NAME}]).
 
 cleanup(Slaves) ->
-    % {ok, Host} = inet:gethostname(),
-    [ ok = slave:stop(SlaveNodeName) || SlaveNodeName <- Slaves ],
     true = ets:delete(node_table),
     true = ets:delete(node_table2),
-    ok = net_kernel:stop(),
+    true = unit_testing:cleanup_slaves(Slaves),
+    ok = unit_testing:stop_distrib(),
     ok = application:stop(hawk),
     ok = application:unload(hawk).
 
 %%--------------------------------------------------------
-
-do_slave_start() ->
-    {ok, Host} = inet:gethostname(),
-    {ok, SlaveName} = slave:start(Host, ?TEST_NODE_NAME),
-    [SlaveName].
-
--spec make_distrib( NodeName::string()|atom(), NodeType::shortnames | longnames)
-        -> {ok, ActualNodeName::atom} | {error, Reason::term()}.
-make_distrib(NodeName, NodeType) when is_list(NodeName) ->
-    make_distrib(erlang:list_to_atom(NodeName), NodeType);
-make_distrib(NodeName, NodeType) ->
-    case node() of
-        'nonode@nohost' ->
-            [] = os:cmd("epmd -daemon"),
-            case net_kernel:start([NodeName, NodeType]) of
-                {ok, _Pid} ->
-                    % true = erlang:set_cookie(node(), cookie),
-                    {ok, node()}
-            end;
-        CurrNode ->
-            CurrNode
-    end.
-
-keep_calling(0, _) ->
-    {error, no_answer};
-keep_calling(Times, F) ->
-    case F() of
-        {error, connecting} ->
-            timer:sleep(25),
-            ?debugFmt("..... KEEP ~p CALLING ~p ......~n", [Times, nodes()]),
-            keep_calling(Times-1, F);
-        Else ->
-            Else
-    end.
 
 node_connected(Node) ->
     % ?debugFmt("node_connected(~p) ->~n", [Node]),
@@ -487,11 +454,3 @@ check_node_table(Node) ->
 check_node_table2(Node) ->
     % ?debugFmt("check_node_table2(~p) ->~n", [Node]),
     ets:lookup(node_table2, Node).
-
-traceme() ->
-    %dbg:tracer(),
-    %dbg:p(all, call),
-    %dbg:tpl(hawk_node, cx),
-    % dbg:tpl(hawk_node_mon, cx),
-    % dbg:tpl(net_kernel, connect_node, cx),
-    ok.

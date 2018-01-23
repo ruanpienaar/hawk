@@ -426,6 +426,7 @@ cleanup(Slaves) ->
     true = ets:delete(node_table2),
     true = unit_testing:cleanup_slaves(Slaves),
     ok = unit_testing:stop_distrib(),
+    timer:sleep(25),
     ok = application:stop(hawk),
     ok = application:unload(hawk).
 

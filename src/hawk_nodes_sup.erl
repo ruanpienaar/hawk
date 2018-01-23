@@ -2,7 +2,7 @@
 -behaviour(supervisor).
 
 -define(CHILD(Id, Mod, Type, Args),
-    {Id, {Mod, start_link, Args}, permanent, 125, Type, [Mod]}).
+    {Id, {Mod, start_link, Args}, permanent, 1000, Type, [Mod]}).
 
 %% API
 -export([

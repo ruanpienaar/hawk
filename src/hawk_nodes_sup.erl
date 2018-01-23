@@ -13,13 +13,11 @@
     id/1
 ]).
 
--type start_child_return() ::
-    {ok, pid()} |
-    {error, already_present} |
-    {error, {already_started, pid()}}.
+-type start_child_return() :: {'error', term()} | % {'error', already_present | {already_started, pid()}} |
+                              {'ok','undefined' | pid()} |
+                              {'ok','undefined' | pid(), term()}.
 
--type delete_child_return() ::
-    ok | {error, no_such_node}.
+-type delete_child_return() :: ok | {error, no_such_node}.
 
 -export_types([
     start_child_return/0,
@@ -33,7 +31,7 @@ init({}) ->
     RestartStrategy = {one_for_one, 5, 10},
     {ok, {RestartStrategy, []}}.
 
--spec start_child(atom(), atom(), list(), list())
+-spec start_child(atom(), atom(), hawk:callbacks(), hawk:callbacks())
     -> start_child_return().
 start_child(Node, Cookie, ConnectedCallback, DisconnectedCallback)
     when is_atom(Node),

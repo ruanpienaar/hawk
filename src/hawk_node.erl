@@ -7,7 +7,7 @@
 %% TODO:
 %% - The ReqPid replies has to be changed to only reply ( ReqPid ! ok ) when the state has changed. ( investigate )
 
--spec start_link(node(), atom(), list(), list()) -> {ok, pid()}.
+% -spec start_link(node(), atom(), list(), list()) -> {ok, pid()}.
 start_link(Node, Cookie, ConnectedCallback, DisconnectedCallback) ->
     State = initial_state(Node, Cookie, ConnectedCallback, DisconnectedCallback),
     {ok, proc_lib:spawn_link(fun() ->
@@ -16,7 +16,7 @@ start_link(Node, Cookie, ConnectedCallback, DisconnectedCallback) ->
         do_wait(State)
     end)}.
 
--spec initial_state(node(), atom(), hawk:callbacks(), hawk:callbacks()) -> map().
+% -spec initial_state(node(), atom(), hawk:callbacks(), hawk:callbacks()) -> map().
 initial_state(Node, Cookie, ConnectedCallbacks, DisconnectedCallbacks) ->
     #{ connected=>false,
        node=>Node,
@@ -30,7 +30,7 @@ initial_state(Node, Cookie, ConnectedCallbacks, DisconnectedCallbacks) ->
 
 %% TODO: maybe configure for auto execute callbacks, based on current state.
 %% sometimes you do not want the callbacks to be executed immediately.
--spec do_wait(map()) -> ok.
+% -spec do_wait(map()) -> ok.
 do_wait(#{ connection_retries := ConnTries, node := Node }) when ConnTries =< 0 ->
     error_logger:info_msg("max connection attempts: dropping ~p soon~n", [Node]),
     spawn(fun() -> ok = hawk:remove_node(Node) end),
@@ -87,7 +87,7 @@ do_wait(#{ connection_retries := ConnTries, conn_retry_wait := ConnTryWait, conn
             ReqPid ! {response, connecting},
             do_wait(State);
         {system, From, _Msg = get_state} ->
-            gen:reply(From, State),
+            {_, _} = gen:reply(From, State),
             loop(State);
         {'EXIT', Who, shutdown} ->
             do_terminate(Who, DCBL, State, do_wait);
@@ -99,7 +99,7 @@ do_wait(#{ connection_retries := ConnTries, conn_retry_wait := ConnTryWait, conn
             do_wait(State#{connection_retries => ConnTries - 1})
     end.
 
--spec loop(map()) -> ok.
+% -spec loop(map()) -> ok.
 loop(#{conn_cb_list := CCBL, disc_cb_list := DCBL, node := Node} = State) ->
     receive
         {nodeup, Node} ->
@@ -142,7 +142,7 @@ loop(#{conn_cb_list := CCBL, disc_cb_list := DCBL, node := Node} = State) ->
             ReqPid ! {response, {CCBL, DCBL}},
             loop(State);
         {system, From, _Msg = get_state} ->
-            gen:reply(From, State),
+            {_, _} = gen:reply(From, State),
             loop(State);
         {'EXIT', Who, shutdown} ->
             do_terminate(Who, DCBL, State, loop);
@@ -151,7 +151,7 @@ loop(#{conn_cb_list := CCBL, disc_cb_list := DCBL, node := Node} = State) ->
             loop(State#{})
     end.
 
--spec do_terminate(pid(), hawk:callbacks(), map(), loop | do_wait) -> ok.
+% -spec do_terminate(pid(), hawk:callbacks(), map(), loop | do_wait) -> ok.
 do_terminate(Who, DCBL, State, LoopFunctionName) when LoopFunctionName == loop orelse
                                                       LoopFunctionName == do_wait ->
     error_logger:info_msg(
@@ -169,7 +169,7 @@ deathbed() ->
         _ -> deathbed()
     end.
 
--spec connected_callback(hawk:callbacks()) -> ok.
+% -spec connected_callback(hawk:callbacks()) -> ok.
 connected_callback(CCBL) ->
     lists:foreach(fun({_Name, F}) ->
         %% TODO: Maybe log callback fun somewhere as info/debug
@@ -183,7 +183,7 @@ connected_callback(CCBL) ->
         end
     end, CCBL).
 
--spec disconnect_or_delete_callback(hawk:callbacks()) -> ok.
+% -spec disconnect_or_delete_callback(hawk:callbacks()) -> ok.
 disconnect_or_delete_callback(DCBL) ->
     lists:foreach(fun({_Name, F}) ->
     %% TODO: Maybe log callback fun somewhere as info/debug

@@ -24,21 +24,30 @@
 
 -type hawk_node_call_return() :: timeout | {error, connecting} | {ok, term()}.
 -type callback_names_return() :: {ok, pid(), list()} | hawk_node_call_return().
+-type callbacks() :: list(callback_type()).
+-type callback_type() :: {CallbackName :: term(), CallbackFunction :: fun()}.
 -type hawk_node_cmd() ::
     state |
-    {add_connect_callback, {Name :: term(),ConnectCallback :: list()}} |
-    {add_disconnect_callback, {Name :: term(),DisconnectCallback :: list()}} |
+    {add_connect_callback, {Name :: term(), ConnectCallback :: fun()}} |
+    {add_disconnect_callback, {Name :: term(), DisconnectCallback :: fun()}} |
     {remove_connect_callback, Name :: term()} |
     {remove_disconnect_callback, Name :: term()} |
     callbacks.
 
+-export_type([
+    callbacks/0,
+    callback_type/0
+]).
+
+-spec start() -> {ok, list()}.
 start() ->
     application:ensure_all_started(hawk).
 
+-spec stop() -> ok | {error, {not_started, atom()}}.
 stop() ->
     application:stop(hawk).
 
--spec nodes() -> list().
+-spec nodes() -> list(pid()).
 nodes() ->
     [ N || {N,_,worker,[hawk_node]} <- supervisor:which_children(hawk_nodes_sup) ].
 
@@ -131,12 +140,13 @@ connected_nodes() ->
 
 %%-------------------------------------------------------------------------------------------
 
--spec call(atom(), hawk_node_cmd()) -> hawk_node_call_return().
+-spec call(atom(), hawk_node_cmd())
+        -> hawk_node_call_return().
 call(Node, Cmd) ->
     call(Node, Cmd, 1000).
 
 -spec call(atom(), hawk_node_cmd(), non_neg_integer())
-    -> hawk_node_call_return().
+        -> hawk_node_call_return().
 call(Node, Cmd, Timeout) ->
     whereis(Node) ! {call, Cmd, self()},
     receive

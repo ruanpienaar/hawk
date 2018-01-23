@@ -7,6 +7,7 @@
 %% TODO:
 %% - The ReqPid replies has to be changed to only reply ( ReqPid ! ok ) when the state has changed. ( investigate )
 
+-spec start_link(node(), atom(), list(), list()) -> {ok, pid()}.
 start_link(Node, Cookie, ConnectedCallback, DisconnectedCallback) ->
     State = initial_state(Node, Cookie, ConnectedCallback, DisconnectedCallback),
     {ok, proc_lib:spawn_link(fun() ->
@@ -15,6 +16,7 @@ start_link(Node, Cookie, ConnectedCallback, DisconnectedCallback) ->
         do_wait(State)
     end)}.
 
+-spec initial_state(node(), atom(), hawk:callbacks(), hawk:callbacks()) -> map().
 initial_state(Node, Cookie, ConnectedCallbacks, DisconnectedCallbacks) ->
     #{ connected=>false,
        node=>Node,
@@ -28,6 +30,7 @@ initial_state(Node, Cookie, ConnectedCallbacks, DisconnectedCallbacks) ->
 
 %% TODO: maybe configure for auto execute callbacks, based on current state.
 %% sometimes you do not want the callbacks to be executed immediately.
+-spec do_wait(map()) -> ok.
 do_wait(#{ connection_retries := ConnTries, node := Node }) when ConnTries =< 0 ->
     error_logger:info_msg("max connection attempts: dropping ~p soon~n", [Node]),
     spawn(fun() -> ok = hawk:remove_node(Node) end),
@@ -35,9 +38,7 @@ do_wait(#{ connection_retries := ConnTries, node := Node }) when ConnTries =< 0 
 do_wait(#{ connection_retries := ConnTries, conn_retry_wait := ConnTryWait, connected := false,
            node := Node, cookie := Cookie, conn_cb_list := CCBL, disc_cb_list := DCBL } = State) when ConnTries > 0 ->
     true = erlang:set_cookie(Node,Cookie),
-
     % Hidden/Slave Nodes are not sending {nodeup, ...} messages....
-
     case net_kernel:connect_node(Node) of
         true ->
             process_flag(trap_exit, true),
@@ -46,7 +47,6 @@ do_wait(#{ connection_retries := ConnTries, conn_retry_wait := ConnTryWait, conn
         false ->
             ok
     end,
-
     receive
         {nodeup, Node} ->
             % error_logger:error_msg("do_wait {nodeup, Node} ~p ~p~n", [{nodeup, Node}, erlang:process_info(self(), registered_name)]),
@@ -90,7 +90,7 @@ do_wait(#{ connection_retries := ConnTries, conn_retry_wait := ConnTryWait, conn
             gen:reply(From, State),
             loop(State);
         {'EXIT', Who, shutdown} ->
-            do_terminate(Who, DCBL, State, loop);
+            do_terminate(Who, DCBL, State, do_wait);
         Else ->
             error_logger:error_msg("do_wait received:~p ~p~n", [Else, erlang:process_info(self(), registered_name)]),
             do_wait(State)
@@ -99,6 +99,7 @@ do_wait(#{ connection_retries := ConnTries, conn_retry_wait := ConnTryWait, conn
             do_wait(State#{connection_retries => ConnTries - 1})
     end.
 
+-spec loop(map()) -> ok.
 loop(#{conn_cb_list := CCBL, disc_cb_list := DCBL, node := Node} = State) ->
     receive
         {nodeup, Node} ->
@@ -150,7 +151,9 @@ loop(#{conn_cb_list := CCBL, disc_cb_list := DCBL, node := Node} = State) ->
             loop(State#{})
     end.
 
-do_terminate(Who, DCBL, State, LoopFunctionName) ->
+-spec do_terminate(pid(), hawk:callbacks(), map(), loop | do_wait) -> ok.
+do_terminate(Who, DCBL, State, LoopFunctionName) when LoopFunctionName == loop orelse
+                                                      LoopFunctionName == do_wait ->
     error_logger:info_msg(
         "requested shutdown from ~p name:~p~n",
         [Who,erlang:process_info(Who, registered_name)]),
@@ -158,7 +161,7 @@ do_terminate(Who, DCBL, State, LoopFunctionName) ->
         true ->
             ok = disconnect_or_delete_callback(DCBL);
         false ->
-            LoopFunctionName(State)
+            loop(State)
     end.
 
 deathbed() ->
@@ -166,6 +169,7 @@ deathbed() ->
         _ -> deathbed()
     end.
 
+-spec connected_callback(hawk:callbacks()) -> ok.
 connected_callback(CCBL) ->
     lists:foreach(fun({_Name, F}) ->
         %% TODO: Maybe log callback fun somewhere as info/debug
@@ -179,6 +183,7 @@ connected_callback(CCBL) ->
         end
     end, CCBL).
 
+-spec disconnect_or_delete_callback(hawk:callbacks()) -> ok.
 disconnect_or_delete_callback(DCBL) ->
     lists:foreach(fun({_Name, F}) ->
     %% TODO: Maybe log callback fun somewhere as info/debug

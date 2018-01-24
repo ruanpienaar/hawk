@@ -1,5 +1,5 @@
 #!/bin/sh
 set -x
 cd `dirname $0`
-exec erl -sname hawk -config $PWD/sys.config -pa $PWD/ebin $PWD/deps/*/ebin $PWD/test -boot start_sasl -setcookie hawk -s hawk start -proto_dist hawk_tcp
+exec erl -sname hawk -config $PWD/sys.config -pa _build/default/lib/*/ebin -boot start_sasl -setcookie hawk -s hawk start -proto_dist hawk_tcp
 # -hidden

@@ -24,8 +24,7 @@ initial_state(Node, Cookie, ConnectedCallbacks, DisconnectedCallbacks) ->
        conn_cb_list=>ConnectedCallbacks,
        disc_cb_list=>DisconnectedCallbacks,
        connection_retries=>application:get_env(hawk, connection_retries, 600),
-       conn_retry_wait=>application:get_env(hawk, conn_retry_wait, 100),
-       connected_area=>undefined
+       conn_retry_wait=>application:get_env(hawk, conn_retry_wait, 100)
     }.
 
 %% TODO: maybe configure for auto execute callbacks, based on current state.
@@ -37,24 +36,25 @@ do_wait(#{ connection_retries := ConnTries, node := Node }) when ConnTries =< 0 
     deathbed();
 do_wait(#{ connection_retries := ConnTries, conn_retry_wait := ConnTryWait, connected := false,
            node := Node, cookie := Cookie, conn_cb_list := CCBL, disc_cb_list := DCBL } = State) when ConnTries > 0 ->
+    % io:format("HAWK_NODE DO_WAIT!!!~n"),
     true = erlang:set_cookie(Node,Cookie),
-    % Hidden/Slave Nodes are not sending {nodeup, ...} messages....
     case net_kernel:connect_node(Node) of
         true ->
-            process_flag(trap_exit, true),
-            io:format("net_kernel:connect_node(Node)"),
-            connected_callback(CCBL),
-            loop(State#{ connected => true, connected_area => net_kernel_connect });
+            % Fake send ourselves a {nodeup,...} message.
+            % Hidden/Slave Nodes are not sending {nodeup, ...} messages.
+            % io:format("Going to send a nodeup myself~n"),
+            self() ! {nodeup, Node};
         false ->
             ok
     end,
     receive
+        % We get these, once the node startups up.
         {nodeup, Node} ->
             % error_logger:error_msg("do_wait {nodeup, Node} ~p ~p~n", [{nodeup, Node}, erlang:process_info(self(), registered_name)]),
             process_flag(trap_exit, true),
-            io:format("do_wait {nodeup, Node}"),
+            %io:format("do_wait {nodeup, Node}~n"),
             connected_callback(CCBL),
-            loop(State#{ connected => true, connected_area => nodeup_msg });
+            loop(State#{ connected => true });
         {nodedown, Node} ->
             % error_logger:error_msg("do_wait {nodedown, Node} ~p ~p~n", [{nodedown, Node}, erlang:process_info(self(), registered_name)]),
             do_wait(State#{ connected => false, connection_retries => ConnTries-1 });
@@ -98,11 +98,13 @@ do_wait(#{ connection_retries := ConnTries, conn_retry_wait := ConnTryWait, conn
             do_wait(State)
     after
         ConnTryWait ->
+            % io:format("Waited long enough ... ... ~n", []),
             do_wait(State#{connection_retries => ConnTries - 1})
     end.
 
 % -spec loop(map()) -> ok.
 loop(#{conn_cb_list := CCBL, disc_cb_list := DCBL, node := Node} = State) ->
+    %io:format("HAWK_NODE LOOP!!!~n"),
     receive
         {'EXIT', Who, shutdown} ->
             do_terminate(Who, DCBL, State, loop);
@@ -150,19 +152,33 @@ loop(#{conn_cb_list := CCBL, disc_cb_list := DCBL, node := Node} = State) ->
             loop(State);
         Any ->
             error_logger:error_msg("loop pid recv : ~p~n", [Any, erlang:process_info(self(), registered_name)]),
-            loop(State#{})
+            loop(State)
+    after
+        % Hidden nodes are not sending {nodedown,...} messages.
+        1000 ->
+            case rpc:call(Node, erlang, localtime, []) of
+                {badrpc,nodedown} ->
+                    ok = disconnect_or_delete_callback(DCBL),
+                    do_wait(State#{ connected => false });
+                _X ->
+                    loop(State)
+            end
     end.
 
 % -spec do_terminate(pid(), hawk:callbacks(), map(), loop | do_wait) -> ok.
 do_terminate(Who, DCBL, State, LoopFunctionName) when LoopFunctionName == loop orelse
                                                       LoopFunctionName == do_wait ->
+    %io:format("HAWK_NODE DO_TERMINATE!!!~n"),
     error_logger:info_msg(
         "requested shutdown from ~p name:~p~n",
         [Who,erlang:process_info(Who, registered_name)]),
     case whereis(hawk_nodes_sup) == Who of
         true ->
-            ok = disconnect_or_delete_callback(DCBL);
+            % io:format("SHUTDOWN WAS FROM NODES SUP!!!~n", []),
+            ok = disconnect_or_delete_callback(DCBL),
+            exit(self());
         false ->
+            % io:format("SHUTDOWN WAS  ... NOT  FROM NODES SUP!!!~n", []),
             LoopFunctionName(State)
     end.
 

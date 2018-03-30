@@ -1,1 +1,2 @@
 - hawk can take a list of sys.config nodes, and automatically connect to them on startup ( migrate this feature from goanna )
+☐ Maybe i should honour hidden nodes, and not be able to connect to them, in the same way erlang does ?

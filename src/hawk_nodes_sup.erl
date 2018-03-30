@@ -13,7 +13,7 @@
     id/1
 ]).
 
--type start_child_return() :: {'error', term()} | % {'error', already_present | {already_started, pid()}} |
+-type start_child_return() :: {'error', term()} |
                               {'ok','undefined' | pid()} |
                               {'ok','undefined' | pid(), term()}.
 

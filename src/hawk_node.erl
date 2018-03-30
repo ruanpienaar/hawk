@@ -1,7 +1,8 @@
 -module(hawk_node).
 
 -export([
-    start_link/4
+    start_link/4,
+    do_start_link/4
 ]).
 
 %% TODO:
@@ -9,12 +10,24 @@
 
 % -spec start_link(node(), atom(), list(), list()) -> {ok, pid()}.
 start_link(Node, Cookie, ConnectedCallback, DisconnectedCallback) ->
+    % State = initial_state(Node, Cookie, ConnectedCallback, DisconnectedCallback),
+    % {ok, proc_lib:start_link(
+    % fun() ->
+    %     true = erlang:register(hawk_nodes_sup:id(Node), self()),
+    %     ok = hawk_node_mon:add_node(Node,Cookie),
+    %     proc_lib:init_ack({ok, self()}),
+    %     do_wait(State)
+    % end)
+    % }.
+    proc_lib:start_link(?MODULE, do_start_link,
+        [Node, Cookie, ConnectedCallback, DisconnectedCallback]).
+
+do_start_link(Node, Cookie, ConnectedCallback, DisconnectedCallback) ->
     State = initial_state(Node, Cookie, ConnectedCallback, DisconnectedCallback),
-    {ok, proc_lib:spawn_link(fun() ->
-        true = erlang:register(hawk_nodes_sup:id(Node), self()),
-        ok = hawk_node_mon:add_node(Node,Cookie),
-        do_wait(State)
-    end)}.
+    true = erlang:register(hawk_nodes_sup:id(Node), self()),
+    ok = hawk_node_mon:add_node(Node,Cookie),
+    proc_lib:init_ack({ok, self()}),
+    do_wait(State).
 
 % -spec initial_state(node(), atom(), hawk:callbacks(), hawk:callbacks()) -> map().
 initial_state(Node, Cookie, ConnectedCallbacks, DisconnectedCallbacks) ->
@@ -58,6 +71,9 @@ do_wait(#{ connection_retries := ConnTries, conn_retry_wait := ConnTryWait, conn
         {nodedown, Node} ->
             % error_logger:error_msg("do_wait {nodedown, Node} ~p ~p~n", [{nodedown, Node}, erlang:process_info(self(), registered_name)]),
             do_wait(State#{ connected => false, connection_retries => ConnTries-1 });
+        {call, state, ReqPid} ->
+            ReqPid ! {response, State},
+            loop(State);
         %% Not connected yet, cannot call connect callback
         {call, {add_connect_callback, {Name,ConnectCallback}}, ReqPid} when is_function(ConnectCallback) ->
             do_wait(case lists:keyfind(Name, 1, CCBL) of
@@ -182,6 +198,7 @@ do_terminate(Who, DCBL, State, LoopFunctionName) when LoopFunctionName == loop o
             LoopFunctionName(State)
     end.
 
+% Required for a controlled removal of the node. So that supervisor doesn't just restart.
 deathbed() ->
     receive
         _ -> deathbed()

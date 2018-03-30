@@ -1,15 +1,11 @@
 -module(hawk).
 
 -compile({no_auto_import,[nodes/0]}).
-
--export([
-    start/0,
-    stop/0
-]).
 -export([
     nodes/0,
     node_exists/1,
-    add_node/2, add_node/4,
+    add_node/2,
+    add_node/4,
     add_connect_callback/2,
     add_disconnect_callback/2,
     remove_connect_callback/2,
@@ -20,9 +16,19 @@
     connected_nodes/0
 ]).
 
+-ifdef(TEST).
+-export([
+    callback_names/1,
+    call/2,
+    call/3
+]).
+-endif.
+
 -define(R, hawk_req).
 
--type hawk_node_call_errors_return() :: {'error', 'connecting'} | 'timeout'.
+-type hawk_node_call_errors_return() :: {'error', 'connecting'} |
+                                        {error, no_such_node} |
+                                        'timeout'.
 -type hawk_node_call_return() :: hawk_node_call_errors_return() | {'ok', any()}.
 -type callback_names_return() :: {ok, pid(), list(callback_name())} | hawk_node_call_errors_return().
 -type callbacks() :: maybe_improper_list() | list(callback_type()).
@@ -42,26 +48,13 @@
     callback_type/0
 ]).
 
--spec start() -> {'error',{atom(),_}} | {'ok', list(atom())}.
-start() ->
-    application:ensure_all_started(hawk).
-
--spec stop() -> 'ok' | {'error', term()}.
-stop() ->
-    application:stop(hawk).
-
 -spec nodes() -> list(term()).
 nodes() ->
     [ N || {N,_,worker,[hawk_node]} <- supervisor:which_children(hawk_nodes_sup) ].
 
--spec node_exists(atom()) -> false | callback_names_return().
+-spec node_exists(atom()) -> callback_names_return().
 node_exists(Node) ->
-    case whereis(Node) of
-        undefined ->
-            false;
-        Pid when is_pid(Pid) ->
-            callback_names(Pid, Node)
-    end.
+    callback_names(Node).
 
 -spec add_node(atom(), atom())
         -> hawk_nodes_sup:start_child_return() |
@@ -78,16 +71,16 @@ add_node(Node, Cookie, ConnectedCallback, DisconnectedCallback)
              is_list(ConnectedCallback) andalso
              is_list(DisconnectedCallback) ->
     case node_exists(Node) of
-        false ->
+        {error, no_such_node} ->
             hawk_nodes_sup:start_child(Node, Cookie, ConnectedCallback, DisconnectedCallback);
         {ok, Pid, _CallbackNames} ->
             ok = lists:foreach(fun({Name,ConnectCallback}) ->
                 %% hawk_node handles the dups
-                add_connect_callback(Node, {Name,ConnectCallback})
+                {ok, {Pid, updated}} = add_connect_callback(Node, {Name,ConnectCallback})
             end, ConnectedCallback),
             ok = lists:foreach(fun({Name, DisconnectCallback}) ->
                 %% hawk_node handles the dups
-                add_disconnect_callback(Node, {Name, DisconnectCallback})
+                {ok, {Pid, updated}} = add_disconnect_callback(Node, {Name, DisconnectCallback})
             end, DisconnectedCallback),
             {error, {already_started, Pid}};
         {error, connecting} ->
@@ -98,7 +91,7 @@ add_node(Node, Cookie, ConnectedCallback, DisconnectedCallback)
 
 -spec add_connect_callback(atom(), callback_type())
         -> hawk_node_call_return().
-add_connect_callback(Node, {Name,ConnectCallback})
+add_connect_callback(Node, {Name, ConnectCallback})
         when is_function(ConnectCallback) ->
     call(Node, {add_connect_callback, {Name, ConnectCallback}}).
 
@@ -133,27 +126,31 @@ remove_node(Node) ->
 node_state(Node) ->
     call(Node, state).
 
--spec callback_names(pid(), atom())
+-spec callback_names(atom())
         -> callback_names_return().
-callback_names(Pid, Node) ->
+callback_names(Node) ->
     case call(Node, callbacks) of
-        {ok, {ConCBS, DisCBS}} when is_list(ConCBS) andalso is_list(DisCBS) ->
+        {ok, {Pid, {ConCBS, DisCBS}}} when is_list(ConCBS) andalso is_list(DisCBS) ->
             Callbacknames = lists:map(fun({Name,_}) ->
                 Name
             end, lists:flatten([ConCBS,DisCBS])),
             {ok, Pid, Callbacknames};
+        {error, no_such_node} ->
+            {error, no_such_node};
         {error, connecting} ->
             {error, connecting};
         timeout ->
             timeout
     end.
 
+% TODO: test hidden nodes.
 -spec connected_nodes()
         -> list(atom()).
 connected_nodes() ->
     lists:filter(fun(Node) ->
-        node_state(Node) =/= {error,connecting}
-    end, erlang:nodes()++erlang:nodes(hidden)).
+        {_Pid, State} = node_state(Node),
+        State =/= {error,connecting}
+    end, nodes()).
 
 %%-------------------------------------------------------------------------------------------
 
@@ -179,13 +176,18 @@ call(Node, Cmd) ->
 -spec call(atom(), hawk_node_cmd(), pos_integer())
         -> hawk_node_call_return().
 call(Node, Cmd, Timeout) ->
-    whereis(Node) ! {call, Cmd, self()},
-    receive
-        {response, connecting} ->
-            {error, connecting};
-        {response, Response} ->
-            {ok, Response}
-    after
-        Timeout ->
-            timeout
+    case whereis(Node) of
+        undefined ->
+            {error, no_such_node};
+        Pid ->
+            Pid ! {call, Cmd, self()},
+            receive
+                {response, connecting} ->
+                    {error, connecting};
+                {response, Response} ->
+                    {ok, {Pid, Response}}
+            after
+                Timeout ->
+                    timeout
+            end
     end.

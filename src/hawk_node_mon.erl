@@ -1,15 +1,18 @@
 -module(hawk_node_mon).
 -export([
     start_link/0,
+    do_start_link/0,
     add_node/2
 ]).
 
 start_link() ->
-    {ok, proc_lib:spawn_link(fun() ->
-        ok = net_kernel:monitor_nodes(true),
-        true = erlang:register(?MODULE, self()),
-        loop([])
-    end)}.
+    proc_lib:start_link(?MODULE, do_start_link, []).
+
+do_start_link() ->
+    ok = net_kernel:monitor_nodes(true),
+    true = erlang:register(?MODULE, self()),
+    ok = proc_lib:init_ack({ok, self()}),
+    loop([]).
 
 add_node(Node, Cookie) ->
     whereis(?MODULE) ! {add_node, Node, Cookie},

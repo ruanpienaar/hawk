@@ -10,15 +10,6 @@
 
 % -spec start_link(node(), atom(), list(), list()) -> {ok, pid()}.
 start_link(Node, Cookie, ConnectedCallback, DisconnectedCallback) ->
-    % State = initial_state(Node, Cookie, ConnectedCallback, DisconnectedCallback),
-    % {ok, proc_lib:start_link(
-    % fun() ->
-    %     true = erlang:register(hawk_nodes_sup:id(Node), self()),
-    %     ok = hawk_node_mon:add_node(Node,Cookie),
-    %     proc_lib:init_ack({ok, self()}),
-    %     do_wait(State)
-    % end)
-    % }.
     proc_lib:start_link(?MODULE, do_start_link,
         [Node, Cookie, ConnectedCallback, DisconnectedCallback]).
 
@@ -26,7 +17,7 @@ do_start_link(Node, Cookie, ConnectedCallback, DisconnectedCallback) ->
     State = initial_state(Node, Cookie, ConnectedCallback, DisconnectedCallback),
     true = erlang:register(hawk_nodes_sup:id(Node), self()),
     ok = hawk_node_mon:add_node(Node,Cookie),
-    proc_lib:init_ack({ok, self()}),
+    ok = proc_lib:init_ack({ok, self()}),
     do_wait(State).
 
 % -spec initial_state(node(), atom(), hawk:callbacks(), hawk:callbacks()) -> map().

@@ -1,4 +1,10 @@
-.PHONY: compile get-deps test clean deep-clean rebar3
+.PHONY: release compile get-deps test clean dialyzer rebar3
+
+release: compile
+	@./rebar3 release
+
+console:
+	@./_build/default/rel/hawk/bin/hawk console
 
 compile: rebar3 get-deps
 	@./rebar3 compile
@@ -6,27 +12,14 @@ compile: rebar3 get-deps
 get-deps:
 	@./rebar3 get-deps
 
+test:
+	@./rebar3 eunit ct
+
 clean:
 	@./rebar3 clean
 
-deep-clean: clean
-	@./rebar3 delete-deps
-
-setup_dialyzer:
-	dialyzer --build_plt --apps erts kernel stdlib runtime_tools syntax_tools deps/*/ebin ./ebin
-	dialyzer --add_to_plt ebin
-
 dialyzer: compile
-	dialyzer ebin
-
-analyze: checkplt
-	@./rebar3 skip_deps=true dialyze
-
-buildplt: setup_dialyzer
-	@./rebar3 skip_deps=true build-plt
-
-checkplt: buildplt
-	@./rebar3 skip_deps=true check-plt
+	@./rebar3 dialyzer
 
 rebar3:
 	@ls rebar3 || wget https://s3.amazonaws.com/rebar3/rebar3 && chmod +x rebar3

@@ -2,7 +2,14 @@
 -behaviour(supervisor).
 
 -define(CHILD(Id, Mod, Type, Args),
-    {Id, {Mod, start_link, Args}, permanent, 250, Type, [Mod]}).
+    #{id       => Id,                      % mandatory
+      start    => {Mod, start_link, Args}, % mandatory
+      restart  => permanent,               % optional
+      shutdown => 5000,                    % optional
+      type     => Type,                    % optional
+      modules  => [Mod]                    % optional
+    }
+).
 
 %% API
 -export([
@@ -28,7 +35,7 @@ start_link() ->
     supervisor:start_link({local, ?MODULE}, ?MODULE, {}).
 
 init({}) ->
-    RestartStrategy = {one_for_one, 5, 10},
+    RestartStrategy = {one_for_one, 500, 10},
     {ok, {RestartStrategy, []}}.
 
 -spec start_child(atom(), atom(), hawk:callbacks(), hawk:callbacks())
@@ -44,7 +51,7 @@ start_child(Node, Cookie, ConnectedCallback, DisconnectedCallback)
 
 -spec delete_child(atom()) -> delete_child_return().
 delete_child(Node) when is_atom(Node) ->
-    case whereis(Node) of
+    case whereis(id(Node)) of
         undefined ->
             {error, no_such_node};
         Pid when is_pid(Pid) ->
@@ -53,5 +60,4 @@ delete_child(Node) when is_atom(Node) ->
     end.
 
 id(Node) ->
-    % list_to_atom("hawk_node_"++atom_to_list(Node)).
-    Node.
+    list_to_atom("hawk_node_"++atom_to_list(Node)).

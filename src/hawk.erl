@@ -29,9 +29,12 @@
 -type hawk_node_call_errors_return() :: {'error', 'connecting'} |
                                         {error, no_such_node} |
                                         'timeout'.
--type hawk_node_call_return() :: hawk_node_call_errors_return() | {'ok', any()}.
--type callback_names_return() :: {ok, pid(), list(callback_name())} | hawk_node_call_errors_return().
--type callbacks() :: maybe_improper_list() | list(callback_type()).
+-type hawk_node_call_return() :: hawk_node_call_errors_return() |
+                                 {'ok', any()}.
+-type callback_names_return() :: {ok, pid(), list(callback_name())} |
+                                 hawk_node_call_errors_return().
+-type callbacks() :: maybe_improper_list() |
+                     list(callback_type()).
 -type callback_name() :: any().
 -type callback() :: fun().
 -type callback_type() :: {callback_name(), callback()}.
@@ -150,7 +153,7 @@ connected_nodes() ->
     lists:filter(fun(Node) ->
         {_Pid, State} = node_state(Node),
         State =/= {error,connecting}
-    end, nodes()).
+    end, hawk:nodes()).
 
 %%-------------------------------------------------------------------------------------------
 
@@ -176,7 +179,8 @@ call(Node, Cmd) ->
 -spec call(atom(), hawk_node_cmd(), pos_integer())
         -> hawk_node_call_return().
 call(Node, Cmd, Timeout) ->
-    case whereis(Node) of
+    Name = hawk_nodes_sup:id(Node),
+    case whereis(Name) of
         undefined ->
             {error, no_such_node};
         Pid ->

@@ -51,6 +51,6 @@ delete_child() ->
 
 id() ->
     ?assertEqual(
-        'node@host.com',
+        'hawk_node_node@host.com',
         hawk_nodes_sup:id('node@host.com')
     ).

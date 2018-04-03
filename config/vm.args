@@ -1,0 +1,3 @@
+-sname hawk 
+-setcookie hawk 
+-proto_dist hawk_tcp

@@ -8,7 +8,7 @@
 %% TODO:
 %% - The ReqPid replies has to be changed to only reply ( ReqPid ! ok ) when the state has changed. ( investigate )
 
-% -spec start_link(node(), atom(), list(), list()) -> {ok, pid()}.
+-spec start_link(node(), atom(), list(), list()) -> {ok, pid()}.
 start_link(Node, Cookie, ConnectedCallback, DisconnectedCallback) ->
     proc_lib:start_link(?MODULE, do_start_link,
         [Node, Cookie, ConnectedCallback, DisconnectedCallback]).
@@ -16,7 +16,8 @@ start_link(Node, Cookie, ConnectedCallback, DisconnectedCallback) ->
 do_start_link(Node, Cookie, ConnectedCallback, DisconnectedCallback) ->
     State = initial_state(Node, Cookie, ConnectedCallback, DisconnectedCallback),
     true = erlang:register(hawk_nodes_sup:id(Node), self()),
-    ok = hawk_node_mon:add_node(Node,Cookie),
+    % ok = hawk_node_mon:add_node(Node,Cookie),
+    ok = hawk_node_mon:add_node(Node),
     ok = proc_lib:init_ack({ok, self()}),
     do_wait(State).
 
@@ -47,7 +48,8 @@ do_wait(#{ connection_retries := ConnTries, conn_retry_wait := ConnTryWait, conn
             % Fake send ourselves a {nodeup,...} message.
             % Hidden/Slave Nodes are not sending {nodeup, ...} messages.
             % io:format("Going to send a nodeup myself~n"),
-            self() ! {nodeup, Node};
+            self() ! {nodeup, Node},
+            ok;
         false ->
             ok
     end,

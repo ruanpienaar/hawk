@@ -18,5 +18,5 @@ init({}) ->
             [hawk_node_mon]},
 
     Children = [Child1],
-    RestartStrategy = {one_for_one, 5, 10},
+    RestartStrategy = {one_for_one, 500, 10},
     {ok, {RestartStrategy, Children}}.

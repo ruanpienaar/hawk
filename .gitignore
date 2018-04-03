@@ -22,3 +22,5 @@ test/jquery-latest.js
 test/jquery.tablesorter.min.js
 test/suite.log.latest.html
 test/variables-ct*
+.tags_sorted_by_file
+.tags

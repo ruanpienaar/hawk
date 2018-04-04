@@ -15,8 +15,11 @@
 -export([
     nodes/1,
     node_exists/1,
+    node_exists_while_connect/1,
     add_node_2/1,
+    add_node_2_while_connecting/1,
     add_node_4/1,
+    add_node_4_while_connecting/1,
     add_connect_callback/1,
     add_connect_callback_while_connect/1,
     add_disconnect_callback/1,
@@ -34,20 +37,23 @@
     add_node_conn_attempts_exceeded_limit/1,
     add_node_conn_callback_duplicate/1,
     add_node_disconn_callback_duplicate/1,
-    hawk_conn_callback_fails/1,
-    hawk_disconn_callback_fails/1
+    node_conn_callback_fails/1,
+    node_disconn_callback_fails/1
 ]).
 -include_lib("common_test/include/ct.hrl").
 
--define(TEST_NODE_NAME, 'test_node').
+% -define(TEST_NODE_NAME, 'test_node').
 
 % Returns a list of all test cases and groups in the suite. (Mandatory)
 all() ->
     % Success Tests
     [nodes
     ,node_exists
+    ,node_exists_while_connect
     ,add_node_2
+    ,add_node_2_while_connecting
     ,add_node_4
+    ,add_node_4_while_connecting
     ,add_connect_callback
     ,add_connect_callback_while_connect
     ,add_disconnect_callback
@@ -64,8 +70,8 @@ all() ->
     [add_node_conn_attempts_exceeded_limit
      ,add_node_conn_callback_duplicate
      ,add_node_disconn_callback_duplicate
-     ,hawk_conn_callback_fails
-     ,hawk_disconn_callback_fails
+     ,node_conn_callback_fails
+     ,node_disconn_callback_fails
     ].
 
 % Information function used to return properties for the suite. (Optional)
@@ -85,6 +91,10 @@ init_per_suite(Config) ->
     % {ok, _} = dbg:tpl(hawk_node, cx),
     % {ok, _} = dbg:tpl(hawk, cx),
     % {ok, _} = dbg:tpl(hawk_node, connected_callback, cx),
+    % {ok, _} = dbg:tpl(hawk_node, do_wait, cx),
+    % {ok, _} = dbg:tpl(hawk_node, loop, cx),
+    % {ok, _} = dbg:tpl(hawk_node, do_terminate, cx),
+    % {ok, _} = dbg:tpl(hawk_nodes_sup, delete_child, cx),
     % {ok, _} = dbg:tpl(hawk_app, cx),
     % {ok, _} = dbg:tpl(hawk_sup, cx),
     % {ok, _} = dbg:tpl(application_master, cx),
@@ -116,7 +126,8 @@ init_per_testcase(_TestCase, Config) ->
     ok = application:set_env(hawk, conn_retry_wait, 100),
     node_table = ets:new(node_table, [public, named_table, set]),
     {ok, Host} = inet:gethostname(),
-    Slaves = erlang_testing:slaves_setup([{Host, ?TEST_NODE_NAME}]),
+    Slaves = erlang_testing:slaves_setup([{Host, new_node_name()}]),
+    ct:log("init_per_testcase Slaves -> ~p~n", [Slaves]),
     [{slaves, Slaves} | Config].
 
 % Configuration function for a testcase, executed after each test case. (Optional)
@@ -133,15 +144,14 @@ end_per_testcase(_TestCase, Config) ->
 % A working started node will be entered into Config as {running_node, Node}.
 
 nodes(_Config) ->
+    Node = new_node_name(),
     [] = hawk:nodes(),
-    {ok, _} = hawk:add_node(node, cookie),
-    [node] = hawk:nodes().
+    {ok, _} = hawk:add_node(Node, cookie),
+    [Node] = hawk:nodes().
 
 node_exists(Config) ->
     {slaves, [Slave|_]} = lists:keyfind(slaves, 1, Config),
     {ok, _} = hawk:add_node(Slave, erlang:get_cookie()),
-    % F = fun() -> element(1, hawk:node_state(Slave)) == ok end,
-    % ok = unit_testing:wait_for_match(100, F, true),
     F = fun() ->
         case hawk:node_state(Slave) of
             {ok, {_, #{ connected := C} = _M}} ->
@@ -151,13 +161,21 @@ node_exists(Config) ->
         end
     end,
     ok = unit_testing:wait_for_match(100, F, true),
+    {ok,_Pid, []} = hawk:node_exists(Slave),
     {ok, {_Pid,#{conn_cb_list := [],
                  conn_retry_wait := 100,
                  connected := true,
-                 connection_retries := 600,
+                 connection_retries := _,
                  cookie := _Cookie,
                  disc_cb_list := [],
                  node := Slave}}} = hawk:node_state(Slave).
+
+node_exists_while_connect(_Config) ->
+    Node = new_node_name(),
+    [] = hawk:nodes(),
+    {ok, _} = hawk:add_node(Node, cookie),
+    [Node] = hawk:nodes(),
+    {error, connecting} = hawk:node_exists(Node).
 
 add_node_2(Config) ->
     {slaves, [Slave|_]} = lists:keyfind(slaves, 1, Config),
@@ -170,6 +188,13 @@ add_node_2(Config) ->
     {error, {already_started, _Pid}} =
         hawk:add_node(Slave, erlang:get_cookie()),
     [Slave] = hawk:nodes().
+
+add_node_2_while_connecting(_Config) ->
+    Node = new_node_name(),
+    [] = hawk:nodes(),
+    {ok, _} = hawk:add_node(Node, cookie),
+    [Node] = hawk:nodes(),
+    {error, connecting} = hawk:add_node(Node, cookie).
 
 add_node_4(Config) ->
     {slaves, [Slave|_]} = lists:keyfind(slaves, 1, Config),
@@ -189,6 +214,15 @@ add_node_4(Config) ->
         match_node_action(Slave, connected2)
     end,
     ok = unit_testing:wait_for_match(100, F2, true).
+
+add_node_4_while_connecting(_Config) ->
+    Node = new_node_name(),
+    [] = hawk:nodes(),
+    CCb = fun() -> node_action(Node, connected) end,
+    DCb = fun() -> node_action(Node, disconnect) end,
+    {ok, _} = hawk:add_node(Node, cookie, [{conn_cb, CCb}], [{disconn_cb, DCb}]),
+    [Node] = hawk:nodes(),
+    {error, connecting} = hawk:add_node(Node, cookie).
 
 add_connect_callback(Config) ->
     {slaves, [Slave|_]} = lists:keyfind(slaves, 1, Config),
@@ -210,30 +244,31 @@ add_connect_callback(Config) ->
     {ok, {_Pid, #{conn_cb_list := [{conn_cb2,CCb2}, {conn_cb,CCb}],
                  conn_retry_wait := 100,
                  connected := true,
-                 connection_retries := 600,
+                 connection_retries := _,
                  cookie := _Cookie,
                  disc_cb_list := [{disconn_cb, DCb}],
                  node := Slave}}} = hawk:node_state(Slave).
 
 add_connect_callback_while_connect(_Config) ->
-    {ok, _} = hawk:add_node(node, cookie),
+    Node = new_node_name(),
+    {ok, _} = hawk:add_node(Node, cookie),
     {ok, {Pid, #{conn_cb_list := [],
                  conn_retry_wait := 100,
                  connected := false,
                  connection_retries := _,
                  cookie := cookie,
                  disc_cb_list := [],
-                 node := node}}} = hawk:node_state(node),
+                 node := Node}}} = hawk:node_state(Node),
     % Add connect callback
-    CCb2 = fun() -> node_action(node, connected2_extra) end,
-    {ok,{_, updated}} = hawk:add_connect_callback(node, {conn_cb2_extra, CCb2}),
+    CCb2 = fun() -> node_action(Node, connected2_extra) end,
+    {ok,{_, updated}} = hawk:add_connect_callback(Node, {conn_cb2_extra, CCb2}),
     {ok, {Pid, #{conn_cb_list := [{conn_cb2_extra,CCb2}],
                  conn_retry_wait := 100,
                  connected := false,
                  connection_retries := _,
                  cookie := cookie,
                  disc_cb_list := [],
-                 node := node}}} = hawk:node_state(node).
+                 node := Node}}} = hawk:node_state(Node).
 
 add_disconnect_callback(Config) ->
     {slaves, [Slave|_]} = lists:keyfind(slaves, 1, Config),
@@ -245,26 +280,49 @@ add_disconnect_callback(Config) ->
     end,
     ok = unit_testing:wait_for_match(100, F, true),
     [{Slave, connected, _}] = node_tbl(Slave),
+    {ok, {Pid, #{conn_cb_list := [{conn_cb, CCb}],
+                 conn_retry_wait := 100,
+                 connected := true,
+                 connection_retries := _,
+                 cookie := _Cookie,
+                 disc_cb_list := [{disconn_cb,DCb}],
+                 node := Slave}}} = hawk:node_state(Slave),
     % Add disconnect callback
     DCb2 = fun() -> node_action(Slave, disconnect2) end,
     {ok,{_, updated}} = hawk:add_disconnect_callback(Slave, {disconn_cb2, DCb2}),
-    {ok, {_Pid, #{conn_cb_list := [{conn_cb,CCb}],
+    {ok, {Pid, #{conn_cb_list := [{conn_cb,CCb}],
                  conn_retry_wait := 100,
                  connected := true,
-                 connection_retries := 600,
+                 connection_retries := _,
                  cookie := _Cookie,
                  disc_cb_list := [{disconn_cb2, DCb2}, {disconn_cb, DCb}],
                  node := Slave}}} = hawk:node_state(Slave),
     % Stop the remote note, to test the disconnect callback
     ok = slave:stop(Slave),
     F2 = fun() ->
-        match_node_action(Slave, disconnect) andalso
-        match_node_action(Slave, disconnect)
+        match_node_action(Slave, disconnect) ==
+        match_node_action(Slave, disconnect2)
     end,
     ok = unit_testing:wait_for_match(100, F2, true).
 
 add_disconnect_callback_while_connect(_Config) ->
-    ok.
+    Node = new_node_name(),
+    [] = hawk:nodes(),
+    CCb = fun() -> node_action(Node, connected) end,
+    DCb = fun() -> node_action(Node, disconnect) end,
+    {ok, _} = hawk:add_node(Node, cookie, [{conn_cb, CCb}], [{disconn_cb, DCb}]),
+    [Node] = hawk:nodes(),
+    % Add disconnect callback
+    DCb2 = fun() -> node_action(Node, disconnect2) end,
+    {ok,{_, updated}} = hawk:add_disconnect_callback(Node, {disconn_cb2, DCb2}),
+    {ok, {_Pid, #{conn_cb_list := [{conn_cb,CCb}],
+                 conn_retry_wait := 100,
+                 connected := false,
+                 connection_retries := _,
+                 cookie := _Cookie,
+                 disc_cb_list := [{disconn_cb2, DCb2}, {disconn_cb, DCb}],
+                 node := Node}}} = hawk:node_state(Node).
+
 
 remove_connect_callback(Config) ->
     {slaves, [Slave|_]} = lists:keyfind(slaves, 1, Config),
@@ -281,7 +339,7 @@ remove_connect_callback(Config) ->
     {ok, {_Pid, #{conn_cb_list := [],
                  conn_retry_wait := 100,
                  connected := true,
-                 connection_retries := 600,
+                 connection_retries := _,
                  cookie := _Cookie,
                  disc_cb_list := [{disconn_cb, DCb}],
                  node := Slave}}} = hawk:node_state(Slave).
@@ -353,7 +411,7 @@ add_node_conn_callback_duplicate(Config) ->
     {ok, {_Pid, #{conn_cb_list := [{conn_cb2,CCb2}, {conn_cb,CCb}],
                  conn_retry_wait := 100,
                  connected := true,
-                 connection_retries := 600,
+                 connection_retries := _,
                  cookie := _Cookie,
                  disc_cb_list := [{disconn_cb, DCb}],
                  node := Slave}}} = hawk:node_state(Slave),
@@ -376,14 +434,14 @@ add_node_disconn_callback_duplicate(Config) ->
     {ok, {_Pid, #{conn_cb_list := [{conn_cb,CCb}],
                  conn_retry_wait := 100,
                  connected := true,
-                 connection_retries := 600,
+                 connection_retries := _,
                  cookie := _Cookie,
                  disc_cb_list := [{disconn_cb2, DCb2}, {disconn_cb, DCb}],
                  node := Slave}}} = hawk:node_state(Slave),
     % Duplicate
     {ok, {_Pid, duplicate}} = hawk:add_disconnect_callback(Slave, {disconn_cb2, DCb2}).
 
-hawk_conn_callback_fails(_Config) ->
+node_conn_callback_fails(_Config) ->
     {slaves, [Slave|_]} = lists:keyfind(slaves, 1, _Config),
     CCb = fun() ->
         node_action(Slave, connected),
@@ -396,10 +454,8 @@ hawk_conn_callback_fails(_Config) ->
     end,
     ok = unit_testing:wait_for_match(100, F, true).
 
-hawk_disconn_callback_fails(_Config) ->
-    [] = hawk:nodes(),
-    {ok, _} = hawk:add_node(node, cookie),
-    [node] = hawk:nodes().
+node_disconn_callback_fails(_Config) ->
+    ok.
 
 %% --------------------------------------------------------------------------------
 
@@ -417,4 +473,5 @@ match_node_action(Node, Action) ->
             false
     end.
 
-
+new_node_name() ->
+    list_to_atom(erlang:ref_to_list(make_ref()) -- "#Ref<>...").

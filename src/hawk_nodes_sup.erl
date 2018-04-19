@@ -1,5 +1,15 @@
 -module(hawk_nodes_sup).
+
 -behaviour(supervisor).
+-export([init/1]).
+
+%% API
+-export([
+    start_link/0,
+    start_child/4,
+    delete_child/1,
+    id/1
+]).
 
 -define(CHILD(Id, Mod, Type, Args),
     #{id       => Id,                      % mandatory
@@ -11,18 +21,11 @@
     }
 ).
 
-%% API
--export([
-    init/1,
-    start_link/0,
-    start_child/4,
-    delete_child/1,
-    id/1
-]).
-
 -type start_child_return() :: {'error', term()} |
-                              {'ok','undefined' | pid()} |
-                              {'ok','undefined' | pid(), term()}.
+                              {'ok','undefined' | pid()}
+                              % |
+                              % {'ok','undefined' | pid(), term()}
+                              .
 
 -type delete_child_return() :: ok | {error, no_such_node}.
 
@@ -32,9 +35,9 @@
 ]).
 
 start_link() ->
-    supervisor:start_link({local, ?MODULE}, ?MODULE, {}).
+    supervisor:start_link({local, ?MODULE}, ?MODULE, []).
 
-init({}) ->
+init([]) ->
     RestartStrategy = {one_for_one, 500, 10},
     {ok, {RestartStrategy, []}}.
 
@@ -46,17 +49,17 @@ start_child(Node, Cookie, ConnectedCallback, DisconnectedCallback)
          is_list(ConnectedCallback),
          is_list(DisconnectedCallback) ->
     supervisor:start_child(?MODULE,
-        ?CHILD(Node, hawk_node, worker, [Node, Cookie, ConnectedCallback, DisconnectedCallback])
+        ?CHILD(id(Node), hawk_node, worker, [Node, Cookie, ConnectedCallback, DisconnectedCallback])
     ).
 
 -spec delete_child(atom()) -> delete_child_return().
 delete_child(Node) when is_atom(Node) ->
-    case whereis(id(Node)) of
-        undefined ->
+    NodeId = id(Node),
+    case supervisor:terminate_child(?MODULE, NodeId) of
+        {error,not_found} ->
             {error, no_such_node};
-        Pid when is_pid(Pid) ->
-            ok = supervisor:terminate_child(?MODULE, Node),
-            ok = supervisor:delete_child(?MODULE, Node)
+        ok ->
+            ok = supervisor:delete_child(?MODULE, NodeId)
     end.
 
 id(Node) ->

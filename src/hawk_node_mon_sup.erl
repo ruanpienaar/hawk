@@ -1,16 +1,18 @@
 -module(hawk_node_mon_sup).
--export([start_link/0]).
 
 -behaviour(supervisor).
 -export([init/1]).
 
--define(SERVER, ?MODULE).
+% API
+-export([
+    start_link/0
+]).
 
 start_link() ->
-    supervisor:start_link({local, ?SERVER}, ?MODULE, {}).
+    supervisor:start_link({local, ?MODULE}, ?MODULE, []).
 
 %% @private
-init({}) ->
+init([]) ->
     Child1 =
         {hawk_node_mon,
             {hawk_node_mon, start_link, []},

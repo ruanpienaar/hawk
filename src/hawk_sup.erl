@@ -1,10 +1,11 @@
 -module(hawk_sup).
 
 -behaviour(supervisor).
+-export([init/1]).
 
+% API
 -export([
-    start_link/0,
-    init/1
+    start_link/0
 ]).
 
 %% TODO: add maps...

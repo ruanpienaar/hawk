@@ -2,24 +2,41 @@
 -include_lib("eunit/include/eunit.hrl").
 
 hawk_app_unit_test_() ->
-    {setup,
-     % Setup Fixture
-     fun() ->
-         xxx
-     end,
-     % Cleanup Fixture
-     fun(xxx) ->
-         ok
-     end,
-     % List of tests
-     [
-       % Example test
-       {"hawk_app:func1/0",
-            ?_assert(unit_testing:try_test_fun(fun func1/0))}
-     ]
-    }.
+    unit_testing:setup(
+        % Setup
+        fun() -> ok end,
+        % Cleanup
+        fun(_) -> ok end,
+        % Tests
+        [
+            {"hawk_app:start_link/0",
+                ?_assert(unit_testing:try_test_fun(fun start_link/0))},
+            {"hawk_app:stop/1",
+                ?_assert(unit_testing:try_test_fun(fun stop/0))}
+        ],
+        % Mocks started at setup phase
+       [
+            % Module
+            {supervisor,
+                % meck opts
+                [unstick, passthrough],
+                % expects
+                [{start_link, fun({local, hawk_sup}, hawk_sup, []) -> {ok, self()} end}
+                ]
+            }
+        ],
+        % Strict meck unload
+        true
+    ).
 
-func1() ->
-    ?assert(
-        is_list(hawk_app:module_info())
+start_link() ->
+    ?assertEqual(
+        {ok, self()},
+        hawk_app:start(normal, normal)
+    ).
+
+stop() ->
+    ?assertEqual(
+        ok,
+        hawk_app:stop(state)
     ).

@@ -13,7 +13,6 @@
 ]).
 % Success Tests
 -export([
-    nodes/1,
     node_exists/1,
     node_exists_while_connect/1,
     add_node_2/1,
@@ -46,9 +45,12 @@
 
 % Returns a list of all test cases and groups in the suite. (Mandatory)
 all() ->
-    % Success Tests
-    [nodes
-    ,node_exists
+    [{group, success_test_group}
+    ,{group, failure_test_group}
+    ].
+
+all_success() ->
+    [node_exists
     ,node_exists_while_connect
     ,add_node_2
     ,add_node_2_while_connecting
@@ -65,8 +67,9 @@ all() ->
     ,remove_node
     ,connected_nodes
     ,callback_names
-    ]++
-    % Failure tests
+    ].
+
+all_failure() ->
     [add_node_conn_attempts_exceeded_limit
      ,add_node_conn_callback_duplicate
      ,add_node_disconn_callback_duplicate
@@ -81,7 +84,10 @@ suite() ->
 
 % For declaring test case groups. (Optional)
 groups() ->
-    [].
+    [
+        {success_test_group, [shuffle,{repeat,10}], all_success()}
+       ,{failure_test_group, [shuffle,{repeat,10}], all_failure()}
+    ].
 
 % Suite level configuration function, executed before the first test case. (Optional)
 init_per_suite(Config) ->
@@ -90,6 +96,8 @@ init_per_suite(Config) ->
     % {ok, _} = dbg:tpl(hawk_sup, cx),
     % {ok, _} = dbg:tpl(hawk_node, cx),
     % {ok, _} = dbg:tpl(hawk, cx),
+    % {ok, _} = dbg:tpl(hawk, add_node, cx),
+    % {ok, _} = dbg:tpl(hawk, remove_node, cx),
     % {ok, _} = dbg:tpl(hawk_node, connected_callback, cx),
     % {ok, _} = dbg:tpl(hawk_node, do_wait, cx),
     % {ok, _} = dbg:tpl(hawk_node, loop, cx),
@@ -99,7 +107,7 @@ init_per_suite(Config) ->
     % {ok, _} = dbg:tpl(hawk_sup, cx),
     % {ok, _} = dbg:tpl(application_master, cx),
     % {ok, _} = dbg:tpl(unit_testing, wait_for_match, cx),
-    {ok, _} = erlang_testing:start_distrib(hawk_nodes_sup_SUITE, shortnames),
+    {ok, _} = erlang_testing:start_distrib(new_node_name(), shortnames),
     ok = application:start(hawk),
     Config.
 
@@ -121,33 +129,43 @@ end_per_group(_GroupName, _Config) ->
     ok.
 
 % Configuration function for a testcase, executed before each test case. (Optional)
+
 init_per_testcase(_TestCase, Config) ->
     ok = application:set_env(hawk, connection_retries, 600),
     ok = application:set_env(hawk, conn_retry_wait, 100),
     node_table = ets:new(node_table, [public, named_table, set]),
     {ok, Host} = inet:gethostname(),
-    Slaves = erlang_testing:slaves_setup([{Host, new_node_name()}]),
+    N1 = new_node_name(),
+    N2 = new_node_name(),
+    N3 = new_node_name(),
+    N4 = new_node_name(),
+    N5 = new_node_name(),
+    Slaves = erlang_testing:slaves_setup([
+        {Host, N1}
+       ,{Host, N2}
+       ,{Host, N3}
+       ,{Host, N4}
+       ,{Host, N5}
+    ]),
     ct:log("init_per_testcase Slaves -> ~p~n", [Slaves]),
     [{slaves, Slaves} | Config].
 
 % Configuration function for a testcase, executed after each test case. (Optional)
 end_per_testcase(_TestCase, Config) ->
-    lists:foreach(fun(N) -> ok = hawk:remove_node(N) end, hawk:nodes()),
+    true = ets:delete(node_table),
+    lists:foreach(fun(N) ->
+        ct:log("Remove node ~p~n", [N]),
+        hawk:remove_node(N)
+    end, hawk:nodes()),
+    [] = hawk:nodes(),
     {slaves, Slaves} = lists:keyfind(slaves, 1, Config),
-    true = erlang_testing:cleanup_slaves(Slaves),
-    true = ets:delete(node_table).
+    true = erlang_testing:cleanup_slaves(Slaves).
 
 
 %---------------------------------------------------------------------------------------------
 % Notes:
 % node will be considered as a "wrong/incorrect/fake" nodename.
 % A working started node will be entered into Config as {running_node, Node}.
-
-nodes(_Config) ->
-    Node = new_node_name(),
-    [] = hawk:nodes(),
-    {ok, _} = hawk:add_node(Node, cookie),
-    [Node] = hawk:nodes().
 
 node_exists(Config) ->
     {slaves, [Slave|_]} = lists:keyfind(slaves, 1, Config),
@@ -303,7 +321,9 @@ add_disconnect_callback(Config) ->
         match_node_action(Slave, disconnect) ==
         match_node_action(Slave, disconnect2)
     end,
-    ok = unit_testing:wait_for_match(100, F2, true).
+    % hawk_node is trying to reconnect.
+    % wait at least 60 s for now, so that the reconnect attempts finish.
+    ok = unit_testing:wait_for_match(2401, F2, true).
 
 add_disconnect_callback_while_connect(_Config) ->
     Node = new_node_name(),

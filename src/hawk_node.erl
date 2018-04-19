@@ -5,6 +5,13 @@
     do_start_link/4
 ]).
 
+% Unit testing
+-ifdef(TEST).
+-export([
+    initial_state/4
+]).
+-endif.
+
 %% TODO:
 %% - The ReqPid replies has to be changed to only reply ( ReqPid ! ok ) when the state has changed. ( investigate )
 
@@ -16,10 +23,19 @@ start_link(Node, Cookie, ConnectedCallback, DisconnectedCallback) ->
 do_start_link(Node, Cookie, ConnectedCallback, DisconnectedCallback) ->
     State = initial_state(Node, Cookie, ConnectedCallback, DisconnectedCallback),
     true = erlang:register(hawk_nodes_sup:id(Node), self()),
+    error_logger:error_msg("~p registered SYSTEM_TIME:~p~n",
+                           [Node, erlang:system_time()]),
     % ok = hawk_node_mon:add_node(Node,Cookie),
-    ok = hawk_node_mon:add_node(Node),
+    ok = hawk_node_mon:add_node(hawk_nodes_sup:id(Node)),
     ok = proc_lib:init_ack({ok, self()}),
-    do_wait(State).
+    case lists:member(Node, nodes()++nodes(hidden)) of
+        true ->
+            % Already known
+            do_start_loop(State);
+        false ->
+            % Not known
+            do_wait(State)
+    end.
 
 % -spec initial_state(node(), atom(), hawk:callbacks(), hawk:callbacks()) -> map().
 initial_state(Node, Cookie, ConnectedCallbacks, DisconnectedCallbacks) ->
@@ -56,11 +72,7 @@ do_wait(#{ connection_retries := ConnTries, conn_retry_wait := ConnTryWait, conn
     receive
         % We get these, once the node startups up.
         {nodeup, Node} ->
-            % error_logger:error_msg("do_wait {nodeup, Node} ~p ~p~n", [{nodeup, Node}, erlang:process_info(self(), registered_name)]),
-            process_flag(trap_exit, true),
-            %io:format("do_wait {nodeup, Node}~n"),
-            connected_callback(CCBL),
-            loop(State#{ connected => true });
+            do_start_loop(State);
         {nodedown, Node} ->
             % error_logger:error_msg("do_wait {nodedown, Node} ~p ~p~n", [{nodedown, Node}, erlang:process_info(self(), registered_name)]),
             do_wait(State#{ connected => false, connection_retries => ConnTries-1 });
@@ -110,6 +122,11 @@ do_wait(#{ connection_retries := ConnTries, conn_retry_wait := ConnTryWait, conn
             % io:format("Waited long enough ... ... ~n", []),
             do_wait(State#{connection_retries => ConnTries - 1})
     end.
+
+do_start_loop(#{conn_cb_list := CCBL} = State) ->
+    process_flag(trap_exit, true),
+    connected_callback(CCBL),
+    loop(State#{ connected => true }).
 
 % -spec loop(map()) -> ok.
 loop(#{conn_cb_list := CCBL, disc_cb_list := DCBL, node := Node} = State) ->

@@ -31,12 +31,13 @@ hawk_sup_unit_test_() ->
                 [{start_link, fun({local, hawk_nodes_sup}, hawk_nodes_sup, []) -> {ok, self()} end},
                  {start_child, fun
                     (hawk_nodes_sup,
-                        #{id       := 'hawk_node_foo@bar',
-                          start    := {hawk_node, start_link, [foo@bar, cookie, [], []]},
-                          restart  := permanent,
-                          shutdown := 5000,
-                          type     := worker,
-                          modules  := [hawk_node]}) ->
+                        % #{id       := 'hawk_node_foo@bar',
+                        %   start    := {hawk_node, start_link, [foo@bar, cookie, [], []]},
+                        %   restart  := permanent,
+                        %   shutdown := 5000,
+                        %   type     := worker,
+                        %   modules  := [hawk_node]}) ->
+                        {'hawk_node_foo@bar', {hawk_node, start_link, [foo@bar, cookie, [], []]}, permanent, 5000, worker, [hawk_node]}) ->
                             {ok, self()};
                     (A, B) ->
                         ?debugFmt("~p ~p", [A, B]),

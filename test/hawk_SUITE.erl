@@ -41,7 +41,13 @@
 ]).
 -include_lib("common_test/include/ct.hrl").
 
-% -define(TEST_NODE_NAME, 'test_node').
+-ifdef(SYSTEM_TIME).
+-define(SYSTEM_TIME_FUNC, erlang:now()).
+-else.
+-define(SYSTEM_TIME_FUNC,
+    erlang:system_time()
+).
+-endif.
 
 % Returns a list of all test cases and groups in the suite. (Mandatory)
 all() ->
@@ -135,7 +141,13 @@ init_per_testcase(_TestCase, Config) ->
     ok = application:set_env(hawk, conn_retry_wait, 100),
     node_table = ets:new(node_table, [public, named_table, set]),
     {ok, Host} = inet:gethostname(),
-    N1 = new_node_name(),
+
+    [] = os:cmd("epmd -daemon"),
+    N1 = new_node_name(Host),
+    os:cmd("ps aux | grep -v grep | grep beam"),
+
+
+    % N1 = new_node_name(),
     N2 = new_node_name(),
     N3 = new_node_name(),
     N4 = new_node_name(),
@@ -147,6 +159,7 @@ init_per_testcase(_TestCase, Config) ->
        ,{Host, N4}
        ,{Host, N5}
     ]),
+
     ct:log("init_per_testcase Slaves -> ~p~n", [Slaves]),
     [{slaves, Slaves} | Config].
 
@@ -483,7 +496,7 @@ node_tbl(Node) ->
     ets:lookup(node_table, Node).
 
 node_action(Node, Action) ->
-    ets:insert(node_table, {Node, Action, erlang:system_time()}).
+    ets:insert(node_table, {Node, Action, ?SYSTEM_TIME_FUNC}).
 
 match_node_action(Node, Action) ->
     case ets:lookup(node_table, Node) of
@@ -495,3 +508,6 @@ match_node_action(Node, Action) ->
 
 new_node_name() ->
     list_to_atom(erlang:ref_to_list(make_ref()) -- "#Ref<>...").
+
+new_node_name(Host) when is_list(Host) ->
+    list_to_atom(erlang:ref_to_list(make_ref()) -- "#Ref<>..." ++ "@"++Host).

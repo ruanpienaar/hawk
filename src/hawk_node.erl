@@ -8,8 +8,18 @@
 % Unit testing
 -ifdef(TEST).
 -export([
-    initial_state/4
+    initial_state/4,
+    connected_callback/1,
+    disconnect_or_delete_callback/1
 ]).
+-endif.
+
+-ifdef(SYSTEM_TIME).
+-define(SYSTEM_TIME_FUNC, erlang:now()).
+-else.
+-define(SYSTEM_TIME_FUNC,
+    erlang:system_time()
+).
 -endif.
 
 %% TODO:
@@ -24,7 +34,7 @@ do_start_link(Node, Cookie, ConnectedCallback, DisconnectedCallback) ->
     State = initial_state(Node, Cookie, ConnectedCallback, DisconnectedCallback),
     true = erlang:register(hawk_nodes_sup:id(Node), self()),
     error_logger:error_msg("~p registered SYSTEM_TIME:~p~n",
-                           [Node, erlang:system_time()]),
+                           [Node, ?SYSTEM_TIME_FUNC]),
     % ok = hawk_node_mon:add_node(Node,Cookie),
     ok = hawk_node_mon:add_node(hawk_nodes_sup:id(Node)),
     ok = proc_lib:init_ack({ok, self()}),
@@ -50,7 +60,7 @@ initial_state(Node, Cookie, ConnectedCallbacks, DisconnectedCallbacks) ->
 
 %% TODO: maybe configure for auto execute callbacks, based on current state.
 %% sometimes you do not want the callbacks to be executed immediately.
-% -spec do_wait(map()) -> ok.
+-spec do_wait(map()) -> ok.
 do_wait(#{ connection_retries := ConnTries, node := Node }) when ConnTries =< 0 ->
     error_logger:info_msg("max connection attempts: dropping ~p soon~n", [Node]),
     spawn(fun() -> ok = hawk:remove_node(Node) end),
@@ -123,12 +133,13 @@ do_wait(#{ connection_retries := ConnTries, conn_retry_wait := ConnTryWait, conn
             do_wait(State#{connection_retries => ConnTries - 1})
     end.
 
+-spec do_start_loop(map()) -> ok.
 do_start_loop(#{conn_cb_list := CCBL} = State) ->
     process_flag(trap_exit, true),
     connected_callback(CCBL),
     loop(State#{ connected => true }).
 
-% -spec loop(map()) -> ok.
+-spec loop(map()) -> ok.
 loop(#{conn_cb_list := CCBL, disc_cb_list := DCBL, node := Node} = State) ->
     %io:format("HAWK_NODE LOOP!!!~n"),
     receive
@@ -148,7 +159,7 @@ loop(#{conn_cb_list := CCBL, disc_cb_list := DCBL, node := Node} = State) ->
         {call, {add_connect_callback, {Name,ConnectCallback}}, ReqPid} when is_function(ConnectCallback) ->
             loop(case lists:keyfind(Name, 1, CCBL) of
                 false ->
-                    connected_callback([{Name,ConnectCallback}]),
+                    ok = connected_callback([{Name,ConnectCallback}]),
                     ReqPid ! {response, updated},
                     State#{conn_cb_list => [{Name,ConnectCallback}|CCBL]};
                 _ ->
@@ -191,7 +202,7 @@ loop(#{conn_cb_list := CCBL, disc_cb_list := DCBL, node := Node} = State) ->
             end
     end.
 
-% -spec do_terminate(pid(), hawk:callbacks(), map(), loop | do_wait) -> ok.
+-spec do_terminate(pid(), hawk:callbacks(), map(), loop | do_wait) -> ok.
 do_terminate(Who, DCBL, State, LoopFunctionName) when LoopFunctionName == loop orelse
                                                       LoopFunctionName == do_wait ->
     %io:format("HAWK_NODE DO_TERMINATE!!!~n"),
@@ -208,13 +219,14 @@ do_terminate(Who, DCBL, State, LoopFunctionName) when LoopFunctionName == loop o
             LoopFunctionName(State)
     end.
 
-% Required for a controlled removal of the node. So that supervisor doesn't just restart.
+% Required for a controlled removal of the node.
+% So that supervisor doesn't just restart.
 deathbed() ->
     receive
         _ -> deathbed()
     end.
 
-% -spec connected_callback(hawk:callbacks()) -> ok.
+-spec connected_callback(hawk:callbacks()) -> ok.
 connected_callback(CCBL) ->
     lists:foreach(fun({_Name, F}) ->
         %% TODO: Maybe log callback fun somewhere as info/debug
@@ -228,7 +240,7 @@ connected_callback(CCBL) ->
         end
     end, CCBL).
 
-% -spec disconnect_or_delete_callback(hawk:callbacks()) -> ok.
+-spec disconnect_or_delete_callback(hawk:callbacks()) -> ok.
 disconnect_or_delete_callback(DCBL) ->
     lists:foreach(fun({_Name, F}) ->
     %% TODO: Maybe log callback fun somewhere as info/debug

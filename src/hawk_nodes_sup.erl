@@ -11,24 +11,23 @@
     id/1
 ]).
 
+%% NB: not working with 17... removed
+%-define(CHILD(Id, Mod, Type, Args),
+%    #{id       => Id,                      % mandatory
+%      start    => {Mod, start_link, Args}, % mandatory
+%      restart  => permanent,               % optional
+%      shutdown => 5000,                    % optional
+%      type     => Type,                    % optional
+%      modules  => [Mod]                    % optional
+%    }
+%).
 -define(CHILD(Id, Mod, Type, Args),
-    #{id       => Id,                      % mandatory
-      start    => {Mod, start_link, Args}, % mandatory
-      restart  => permanent,               % optional
-      shutdown => 5000,                    % optional
-      type     => Type,                    % optional
-      modules  => [Mod]                    % optional
-    }
+	{Id, {Mod, start_link, Args}, permanent, 5000, Type, [Mod]}
 ).
 
 -type start_child_return() :: {'error', term()} |
-                              {'ok','undefined' | pid()}
-                              % |
-                              % {'ok','undefined' | pid(), term()}
-                              .
-
+                              {'ok','undefined' | pid()}.
 -type delete_child_return() :: ok | {error, no_such_node}.
-
 -export_types([
     start_child_return/0,
     delete_child_return/0
@@ -38,8 +37,7 @@ start_link() ->
     supervisor:start_link({local, ?MODULE}, ?MODULE, []).
 
 init([]) ->
-    RestartStrategy = {one_for_one, 500, 10},
-    {ok, {RestartStrategy, []}}.
+    {ok, {{one_for_one, 500, 10}, []}}.
 
 -spec start_child(atom(), atom(), hawk:callbacks(), hawk:callbacks())
     -> start_child_return().
@@ -48,7 +46,8 @@ start_child(Node, Cookie, ConnectedCallback, DisconnectedCallback)
          is_atom(Cookie),
          is_list(ConnectedCallback),
          is_list(DisconnectedCallback) ->
-    supervisor:start_child(?MODULE,
+    supervisor:start_child(
+        ?MODULE,
         ?CHILD(id(Node), hawk_node, worker, [Node, Cookie, ConnectedCallback, DisconnectedCallback])
     ).
 

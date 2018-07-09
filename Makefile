@@ -1,10 +1,4 @@
-.PHONY: release compile get-deps test clean dialyzer rebar3
-
-release: compile
-	@./rebar3 release
-
-console:
-	@./_build/default/rel/hawk/bin/hawk console
+.PHONY: compile get-deps test clean dialyzer rebar3
 
 compile: rebar3 get-deps
 	@./rebar3 compile

@@ -1,2 +1,2 @@
 #!/bin/bash
-rebar clean compile eunit skip_deps=true
+make && ./rebar3 xref && ./rebar3 eunit -c && ./rebar3 ct -c

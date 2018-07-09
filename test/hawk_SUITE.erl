@@ -421,7 +421,7 @@ add_node_conn_attempts_exceeded_limit(_Config) ->
     ok = application:set_env(hawk, conn_retry_wait, 10),
     % Non existing node
     {ok, _} = hawk:add_node(foo_node, bar_cookie, [], []),
-    timer:sleep(20),
+    timer:sleep(100),
     [] = hawk:nodes().
 
 add_node_conn_callback_duplicate(Config) ->

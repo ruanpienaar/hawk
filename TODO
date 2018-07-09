@@ -3,3 +3,5 @@
 ☐ rename hawk_nodes_sup to hawk_node_sup
 ☐ Add option for auto reconnect / No auto reconnect.
 ☐ constant attempt to connect, for easier testing.
+☐ Create other erlang nodes for testing ( NOT SLAVES )
+- child spec as map, is not working on R17

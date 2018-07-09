@@ -5,26 +5,27 @@
 % it is covered by hawk_SUITE.erl
 
 hawk_node_unit_test_() ->
-    {setup,
-     % Setup Fixture
-     fun() ->
-         xxx
-     end,
-     % Cleanup Fixture
-     fun(xxx) ->
-         ok
-     end,
-     % List of tests
-     [
-       % Example test
-       {"hawk_node:initial_state/4",
-            ?_assert(unit_testing:try_test_fun(fun initial_state/0))}
+    unit_testing:setup(
+        % Setup
+        fun() -> ok end,
+        % Cleanup
+        fun(_) -> ok end,
+        % Tests
+        [
+            {"hawk_node:initial_state/0",
+                ?_assert(unit_testing:try_test_fun(fun initial_state/0))},
+            {"hawk_node:connected_callback/1",
+                ?_assert(unit_testing:try_test_fun(fun connected_callback/0))},
+            {"hawk_node:disconnect_or_delete_callback/1",
+                ?_assert(unit_testing:try_test_fun(fun disconnect_or_delete_callback/0))}
 
-        % initial_state(Node, Cookie, ConnectedCallbacks, DisconnectedCallbacks)
-        % connected_callback(CCBL) ->
-        % disconnect_or_delete_callback(DCBL) ->
-     ]
-    }.
+        ],
+        % Mocks started at setup phase
+        [
+        ],
+        % Strict meck unload
+        true
+    ).
 
 initial_state() ->
     CF = fun() -> ok end,
@@ -39,4 +40,28 @@ initial_state() ->
            conn_retry_wait=>100
         },
         hawk_node:initial_state(node, cookie, [{con, CF}], [{discon, DCF}])
+    ).
+
+connected_callback() ->
+    ?assertEqual(
+        ok,
+        hawk_node:connected_callback([])
+    ),
+    ?assertEqual(
+        ok,
+        hawk_node:connected_callback([])
+    ).
+
+disconnect_or_delete_callback() ->
+    ?assertEqual(
+        ok,
+        hawk_node:disconnect_or_delete_callback([
+            {conn, fun() -> list_to_atom("ok") end}
+        ])
+    ),
+    ?assertEqual(
+        ok,
+        hawk_node:disconnect_or_delete_callback([
+            {disconn, fun() -> list_to_atom("ok") end}
+        ])
     ).

@@ -22,7 +22,7 @@
 %    }
 %).
 -define(CHILD(Id, Mod, Type, Args),
-	{Id, {Mod, start_link, Args}, permanent, 5000, Type, [Mod]}
+	{Id, {Mod, start_link, Args}, transient, 5000, Type, [Mod]}
 ).
 
 -type start_child_return() :: {'error', term()} |

@@ -13,12 +13,12 @@
     remove_node/1,
     %update_cookie/2,
     node_state/1,
+    callback_names/1,
     connected_nodes/0
 ]).
 
 -ifdef(TEST).
 -export([
-    callback_names/1,
     call/2,
     call/3
 ]).

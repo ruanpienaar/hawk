@@ -88,7 +88,7 @@ do_wait(#{ connection_retries := ConnTries, conn_retry_wait := ConnTryWait, conn
             do_wait(State#{ connected => false, connection_retries => ConnTries-1 });
         {call, state, ReqPid} ->
             ReqPid ! {response, State},
-            loop(State);
+            do_wait(State);
         %% Not connected yet, cannot call connect callback
         {call, {add_connect_callback, {Name,ConnectCallback}}, ReqPid} when is_function(ConnectCallback) ->
             do_wait(case lists:keyfind(Name, 1, CCBL) of
@@ -112,16 +112,19 @@ do_wait(#{ connection_retries := ConnTries, conn_retry_wait := ConnTryWait, conn
             end);
         {call, {remove_connect_callback, Name}, ReqPid} ->
             ReqPid ! {response, updated},
-            loop(State#{conn_cb_list => lists:keydelete(Name, 1, CCBL)});
+            do_wait(State#{conn_cb_list => lists:keydelete(Name, 1, CCBL)});
         {call, {remove_disconnect_callback, Name}, ReqPid} ->
             ReqPid ! {response, updated},
-            loop(State#{disc_cb_list => lists:keydelete(Name, 1, DCBL)});
+            do_wait(State#{disc_cb_list => lists:keydelete(Name, 1, DCBL)});
+        {call, callbacks, ReqPid} ->
+            ReqPid ! {response, {CCBL, DCBL}},
+            do_wait(State);
         {call,_,ReqPid} ->
             ReqPid ! {response, connecting},
             do_wait(State);
         {system, From, _Msg = get_state} ->
             {_, _} = gen:reply(From, State),
-            loop(State);
+            do_wait(State);
         {'EXIT', Who, shutdown} ->
             do_terminate(Who, DCBL, State, do_wait);
         Else ->

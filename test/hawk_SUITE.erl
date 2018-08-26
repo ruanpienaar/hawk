@@ -206,7 +206,7 @@ node_exists_while_connect(_Config) ->
     [] = hawk:nodes(),
     {ok, _} = hawk:add_node(Node, cookie),
     [Node] = hawk:nodes(),
-    {error, connecting} = hawk:node_exists(Node).
+    {ok,_,[]} = hawk:node_exists(Node).
 
 add_node_2(Config) ->
     {slaves, [Slave|_]} = lists:keyfind(slaves, 1, Config),
@@ -225,7 +225,7 @@ add_node_2_while_connecting(_Config) ->
     [] = hawk:nodes(),
     {ok, _} = hawk:add_node(Node, cookie),
     [Node] = hawk:nodes(),
-    {error, connecting} = hawk:add_node(Node, cookie).
+    {error,{already_started,_}} = hawk:add_node(Node, cookie).
 
 add_node_4(Config) ->
     {slaves, [Slave|_]} = lists:keyfind(slaves, 1, Config),
@@ -251,9 +251,11 @@ add_node_4_while_connecting(_Config) ->
     [] = hawk:nodes(),
     CCb = fun() -> node_action(Node, connected) end,
     DCb = fun() -> node_action(Node, disconnect) end,
+    ct:pal("1\n\n", []),
     {ok, _} = hawk:add_node(Node, cookie, [{conn_cb, CCb}], [{disconn_cb, DCb}]),
     [Node] = hawk:nodes(),
-    {error, connecting} = hawk:add_node(Node, cookie).
+    ct:pal("2\n\n", []),
+    {error,{already_started,_}} = hawk:add_node(Node, cookie).
 
 add_connect_callback(Config) ->
     {slaves, [Slave|_]} = lists:keyfind(slaves, 1, Config),

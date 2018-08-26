@@ -33,11 +33,11 @@ hawk_sup_unit_test_() ->
                     (hawk_nodes_sup,
                         % #{id       := 'hawk_node_foo@bar',
                         %   start    := {hawk_node, start_link, [foo@bar, cookie, [], []]},
-                        %   restart  := permanent,
+                        %   restart  := transient,
                         %   shutdown := 5000,
                         %   type     := worker,
                         %   modules  := [hawk_node]}) ->
-                        {'hawk_node_foo@bar', {hawk_node, start_link, [foo@bar, cookie, [], []]}, permanent, 5000, worker, [hawk_node]}) ->
+                        {'hawk_node_foo@bar', {hawk_node, start_link, [foo@bar, cookie, [], []]}, transient, 5000, worker, [hawk_node]}) ->
                             {ok, self()};
                     (A, B) ->
                         ?debugFmt("~p ~p", [A, B]),

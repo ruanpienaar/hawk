@@ -5,6 +5,12 @@
     add_node/1
 ]).
 
+-ifdef(TEST).
+-export([
+    loop/0
+]).
+-endif.
+
 start_link() ->
     proc_lib:start_link(?MODULE, do_start_link, []).
 

@@ -33,6 +33,7 @@ start_link(Node, Cookie, ConnectedCallback, DisconnectedCallback) ->
 do_start_link(Node, Cookie, ConnectedCallback, DisconnectedCallback) ->
     State = initial_state(Node, Cookie, ConnectedCallback, DisconnectedCallback),
     true = erlang:register(hawk_nodes_sup:id(Node), self()),
+    % process_flag(priority, high),
     error_logger:error_msg("~p registered SYSTEM_TIME:~p~n",
                            [Node, ?SYSTEM_TIME_FUNC]),
     % ok = hawk_node_mon:add_node(Node,Cookie),

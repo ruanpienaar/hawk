@@ -97,8 +97,8 @@ groups() ->
 
 % Suite level configuration function, executed before the first test case. (Optional)
 init_per_suite(Config) ->
-    % {ok, _} = dbg:tracer(),
-    % {ok, _} = dbg:p(all, call),
+    {ok, _} = dbg:tracer(),
+    {ok, _} = dbg:p(all, call),
     % {ok, _} = dbg:tpl(hawk_sup, cx),
     % {ok, _} = dbg:tpl(hawk_node, cx),
     % {ok, _} = dbg:tpl(hawk, cx),
@@ -113,6 +113,9 @@ init_per_suite(Config) ->
     % {ok, _} = dbg:tpl(hawk_sup, cx),
     % {ok, _} = dbg:tpl(application_master, cx),
     % {ok, _} = dbg:tpl(unit_testing, wait_for_match, cx),
+    % {ok, _} = dbg:tpl(net_kernel, cx),
+    % {ok, _} = dbg:tpl(auth, cx),
+    {ok, _} = dbg:tpl(ct_slave, cx),
     {ok, _} = erlang_testing:start_distrib(new_node_name(), shortnames),
     ok = application:start(hawk),
     Config.
@@ -141,26 +144,22 @@ init_per_testcase(_TestCase, Config) ->
     ok = application:set_env(hawk, conn_retry_wait, 100),
     node_table = ets:new(node_table, [public, named_table, set]),
     {ok, Host} = inet:gethostname(),
-
-    [] = os:cmd("epmd -daemon"),
+    % [] = os:cmd("epmd -daemon"),
     N1 = new_node_name(Host),
-    os:cmd("ps aux | grep -v grep | grep beam"),
-
-
+    % os:cmd("ps aux | grep -v grep | grep beam"),
     % N1 = new_node_name(),
     N2 = new_node_name(),
     N3 = new_node_name(),
     N4 = new_node_name(),
     N5 = new_node_name(),
-    Slaves = erlang_testing:slaves_setup([
-        {Host, N1}
-       ,{Host, N2}
-       ,{Host, N3}
-       ,{Host, N4}
-       ,{Host, N5}
+    Slaves = erlang_testing:ct_slaves_setup([
+        {list_to_atom(Host), N1}
+       % ,{list_to_atom(Host), N2}
+       % ,{list_to_atom(Host), N3}
+       % ,{list_to_atom(Host), N4}
+       % ,{list_to_atom(Host), N5}
     ]),
-
-    ct:log("init_per_testcase Slaves -> ~p~n", [Slaves]),
+    % ct:log("init_per_testcase Slaves -> ~p~n", [Slaves]),
     [{slaves, Slaves} | Config].
 
 % Configuration function for a testcase, executed after each test case. (Optional)
@@ -172,7 +171,7 @@ end_per_testcase(_TestCase, Config) ->
     end, hawk:nodes()),
     [] = hawk:nodes(),
     {slaves, Slaves} = lists:keyfind(slaves, 1, Config),
-    true = erlang_testing:cleanup_slaves(Slaves).
+    true = erlang_testing:ct_cleanup_slaves(Slaves).
 
 
 %---------------------------------------------------------------------------------------------

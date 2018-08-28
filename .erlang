@@ -1,1 +1,0 @@
-application:ensure_all_started(hawk).

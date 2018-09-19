@@ -1,4 +1,5 @@
 -module(hawk_SUITE).
+-include_lib("eunit/include/eunit.hrl").
 -export([
     all/0,
     suite/0,
@@ -97,8 +98,8 @@ groups() ->
 
 % Suite level configuration function, executed before the first test case. (Optional)
 init_per_suite(Config) ->
-    {ok, _} = dbg:tracer(),
-    {ok, _} = dbg:p(all, call),
+    %{ok, _} = dbg:tracer(),
+    %{ok, _} = dbg:p(all, call),
     % {ok, _} = dbg:tpl(hawk_sup, cx),
     % {ok, _} = dbg:tpl(hawk_node, cx),
     % {ok, _} = dbg:tpl(hawk, cx),
@@ -115,7 +116,7 @@ init_per_suite(Config) ->
     % {ok, _} = dbg:tpl(unit_testing, wait_for_match, cx),
     % {ok, _} = dbg:tpl(net_kernel, cx),
     % {ok, _} = dbg:tpl(auth, cx),
-    {ok, _} = dbg:tpl(ct_slave, cx),
+    %{ok, _} = dbg:tpl(ct_slave, cx),
     {ok, _} = erlang_testing:start_distrib(new_node_name(), shortnames),
     ok = application:start(hawk),
     Config.

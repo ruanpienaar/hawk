@@ -92,8 +92,12 @@ suite() ->
 % For declaring test case groups. (Optional)
 groups() ->
     [
-        {success_test_group, [shuffle,{repeat,10}], all_success()}
-       ,{failure_test_group, [shuffle,{repeat,10}], all_failure()}
+        {success_test_group, 
+            [shuffle,{repeat,10}],
+            all_success()}
+       ,{failure_test_group, 
+            [shuffle,{repeat,10}],
+            all_failure()}
     ].
 
 % Suite level configuration function, executed before the first test case. (Optional)
@@ -145,14 +149,13 @@ init_per_testcase(_TestCase, Config) ->
     ok = application:set_env(hawk, conn_retry_wait, 100),
     node_table = ets:new(node_table, [public, named_table, set]),
     {ok, Host} = inet:gethostname(),
-    % [] = os:cmd("epmd -daemon"),
     N1 = new_node_name(Host),
     % os:cmd("ps aux | grep -v grep | grep beam"),
     % N1 = new_node_name(),
-    N2 = new_node_name(),
-    N3 = new_node_name(),
-    N4 = new_node_name(),
-    N5 = new_node_name(),
+    %N2 = new_node_name(),
+    %N3 = new_node_name(),
+    %N4 = new_node_name(),
+    %N5 = new_node_name(),
     Slaves = erlang_testing:ct_slaves_setup([
         {list_to_atom(Host), N1}
        % ,{list_to_atom(Host), N2}
@@ -164,7 +167,14 @@ init_per_testcase(_TestCase, Config) ->
     [{slaves, Slaves} | Config].
 
 % Configuration function for a testcase, executed after each test case. (Optional)
+end_per_testcase(add_disconnect_callback, Config) ->
+    %% Don't care, if slave stop returns false, cause the test 
+    %% stops the slave
+    do_end_per_testcase(Config);
 end_per_testcase(_TestCase, Config) ->
+    true = do_end_per_testcase(Config).
+
+do_end_per_testcase(Config) ->
     true = ets:delete(node_table),
     lists:foreach(fun(N) ->
         ct:log("Remove node ~p~n", [N]),
@@ -172,8 +182,7 @@ end_per_testcase(_TestCase, Config) ->
     end, hawk:nodes()),
     [] = hawk:nodes(),
     {slaves, Slaves} = lists:keyfind(slaves, 1, Config),
-    true = erlang_testing:ct_cleanup_slaves(Slaves).
-
+    erlang_testing:ct_cleanup_slaves(Slaves).
 
 %---------------------------------------------------------------------------------------------
 % Notes:

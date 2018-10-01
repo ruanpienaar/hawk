@@ -33,11 +33,12 @@ start_link(Node, Cookie, ConnectedCallback, DisconnectedCallback) ->
 do_start_link(Node, Cookie, ConnectedCallback, DisconnectedCallback) ->
     State = initial_state(Node, Cookie, ConnectedCallback, DisconnectedCallback),
     true = erlang:register(hawk_nodes_sup:id(Node), self()),
+    error_logger:error_msg("Hawk node ~p registered as PID ~p\n", [hawk_nodes_sup:id(Node), self()]),
     % process_flag(priority, high),
     error_logger:error_msg("~p registered SYSTEM_TIME:~p~n",
                            [Node, ?SYSTEM_TIME_FUNC]),
     % ok = hawk_node_mon:add_node(Node,Cookie),
-    ok = hawk_node_mon:add_node(hawk_nodes_sup:id(Node)),
+    ok = hawk_node_mon:add_node(hawk_nodes_sup:id(Node), self()),
     ok = proc_lib:init_ack({ok, self()}),
     case lists:member(Node, nodes()++nodes(hidden)) of
         true ->
@@ -232,28 +233,30 @@ deathbed() ->
 
 -spec connected_callback(hawk:callbacks()) -> ok.
 connected_callback(CCBL) ->
-    lists:foreach(fun({_Name, F}) ->
+    lists:foreach(fun({Name, F}) ->
         %% TODO: Maybe log callback fun somewhere as info/debug
         %% TODO: maybe spawn, or allow to specify whether callbacks may block or not...
         try
+            error_logger:error_msg("connected_callback ~p\n", [Name]),
             F()
         catch
             C:E ->
-                error_logger:error_msg("hawk_node connected callback failed ~p ~p ~p",
-                    [C, E, erlang:get_stacktrace()])
+                error_logger:error_msg("hawk_node connected callback ~p failed ~p ~p ~p",
+                    [Name, C, E, erlang:get_stacktrace()])
         end
     end, CCBL).
 
 -spec disconnect_or_delete_callback(hawk:callbacks()) -> ok.
 disconnect_or_delete_callback(DCBL) ->
-    lists:foreach(fun({_Name, F}) ->
+    lists:foreach(fun({Name, F}) ->
     %% TODO: Maybe log callback fun somewhere as info/debug
     %% TODO: maybe spawn, or allow to specify whether callbacks may block or not...
         try
+            error_logger:error_msg("disconnect_or_delete_callback ~p\n", [Name]),
             F()
         catch
             C:E ->
-                error_logger:error_msg("hawk_node disconnected callback failed ~p ~p ~p",
-                    [C, E, erlang:get_stacktrace()])
+                error_logger:error_msg("hawk_node disconnected callback ~p failed ~p ~p ~p",
+                    [Name, C, E, erlang:get_stacktrace()])
         end
     end, DCBL).

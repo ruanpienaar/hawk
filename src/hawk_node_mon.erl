@@ -2,7 +2,7 @@
 -export([
     start_link/0,
     do_start_link/0,
-    add_node/1
+    add_node/2
 ]).
 
 -ifdef(TEST).
@@ -22,19 +22,28 @@ do_start_link() ->
     ok = proc_lib:init_ack({ok, self()}),
     loop().
 
-add_node(Node) ->
-    whereis(?MODULE) ! {add_node, Node},
-    ok.
+add_node(Node, NodePid) ->
+    whereis(?MODULE) ! {add_node, Node, NodePid, self()},
+    receive
+        ok ->
+            ok
+    after
+        5000 ->
+            timeout
+    end.
 
 % is_known_node(Node) ->
 %     ok.
 
 loop() ->
     receive
-        {add_node, Node} ->
-            % io:format("add_node -> Node:~p NodePid:~p~n~n",
-            %           [Node, whereis(hawk_nodes_sup:id(Node))]),
+        {add_node, Node, NodePid, ReqPid} ->
+            error_logger:error_msg("add_node -> Node:~p NodePid:~p~n~n",
+                      [Node, NodePid]),
             true = erlang:monitor_node(Node, true),
+            true = erlang:link(NodePid),
+            % error_logger:error_msg("", []),
+            ReqPid ! ok,
             loop();
         {nodeup, Node} ->
             % true = ets:insert(?MODULE,
@@ -43,19 +52,19 @@ loop() ->
                     error_logger:error_msg("!nodeup -> Node:~p not hawk node SYSTEM_TIME:~p~n",
                                            [Node, erlang:system_time()]);
                 Pid ->
-                    % io:format("nodeup -> Node:~p NodePid:~p~n~n",
-                    %           [Node, Pid]),
+                    error_logger:error_msg("nodeup -> Node:~p NodePid:~p~n~n",
+                              [Node, Pid]),
                     Pid ! {nodeup, Node}
             end,
             loop();
         {nodedown, Node} ->
             case whereis(hawk_nodes_sup:id(Node)) of
                 undefined ->
-                    error_logger:error_msg("!nodedown -> Node:~p not hawk node~n",
-                                           [Node]);
+                    error_logger:error_msg("!nodedown -> Node:~p not registered as ~p~n",
+                                           [Node, hawk_nodes_sup:id(Node)]);
                 Pid ->
-                    % io:format("nodedown -> Node:~p NodePid:~p~n~n",
-                    %           [Node, Pid]),
+                    error_logger:error_msg("nodedown -> Node:~p NodePid:~p~n~n",
+                              [Node, Pid]),
                     Pid ! {nodedown, Node}
             end,
             loop();

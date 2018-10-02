@@ -179,17 +179,13 @@ do_end_per_testcase(Config) ->
     
     os:cmd("ps aux | grep node1@localhost | grep -v grep | awk '{print$2}' | xargs kill -9"),
     ok = unit_testing:wait_for_match(100, fun() ->
-        AB1 = os:cmd("ps aux | grep node1@localhost | grep -v grep"),
-        ct:pal("AB1 ~p\n", [AB1]),
-        AB1
-    end, []),
+        os:cmd("ps aux | grep node1@localhost | grep -v grep")
+    end, [], 100),
 
     os:cmd("ps aux | grep node2@localhost | grep -v grep | awk '{print$2}' | xargs kill -9"),
     ok = unit_testing:wait_for_match(100, fun() ->
-        AB1 = os:cmd("ps aux | grep node2@localhost | grep -v grep"),
-        ct:pal("AB1 ~p\n", [AB1]),
-        AB1
-    end, []).
+        os:cmd("ps aux | grep node2@localhost | grep -v grep")
+    end, [], 100).
 
 %---------------------------------------------------------------------------------------------
 % Notes:
@@ -211,7 +207,7 @@ node_exists(Config) ->
                 false
         end
     end,
-    ok = unit_testing:wait_for_match(50, F, true),
+    ok = unit_testing:wait_for_match(50, F, true, 100),
     ct:pal("TEST node_exists wait stage 3\n", []),
     {ok,_Pid, []} = hawk:node_exists(N1),
     ct:pal("TEST node_exists wait stage 4\n", []),
@@ -237,7 +233,7 @@ add_node_2(Config) ->
     F = fun() ->
         {error, connecting} =/= hawk:node_state(N1)
     end,
-    ok = unit_testing:wait_for_match(100, F, true),
+    ok = unit_testing:wait_for_match(100, F, true, 100),
     {error, {already_started, _Pid}} =
         hawk:add_node(N1, cookie),
     [N1] = hawk:nodes().
@@ -257,7 +253,7 @@ add_node_4(Config) ->
     F = fun() ->
         match_node_action(N1, connected)
     end,
-    ok = unit_testing:wait_for_match(100, F, true),
+    ok = unit_testing:wait_for_match(100, F, true, 100),
     [{{N1, connected}, _}] = node_tbl(N1, connected),
     CCb2 = fun() -> node_action(N1, connected2) end,
     DCb2 = fun() -> node_action(N1, disconnect2) end,
@@ -266,7 +262,7 @@ add_node_4(Config) ->
     F2 = fun() ->
         match_node_action(N1, connected2)
     end,
-    ok = unit_testing:wait_for_match(100, F2, true).
+    ok = unit_testing:wait_for_match(100, F2, true, 100).
 
 add_node_4_while_connecting(_Config) ->
     Node = new_node_name(),
@@ -287,7 +283,7 @@ add_connect_callback(Config) ->
     F = fun() ->
         match_node_action(N1, connected)
     end,
-    ok = unit_testing:wait_for_match(100, F, true),
+    ok = unit_testing:wait_for_match(100, F, true, 100),
     [{{N1, connected}, _}] = node_tbl(N1, connected),
     % Add connect callback
     CCb2 = fun() -> node_action(N1, connected2) end,
@@ -295,7 +291,7 @@ add_connect_callback(Config) ->
     F2 = fun() ->
         match_node_action(N1, connected2)
     end,
-    ok = unit_testing:wait_for_match(100, F2, true),
+    ok = unit_testing:wait_for_match(100, F2, true, 100),
     {ok, {_Pid, #{conn_cb_list := [{conn_cb2,CCb2}, {conn_cb,CCb}],
                  conn_retry_wait := 100,
                  connected := true,
@@ -333,7 +329,7 @@ add_disconnect_callback(Config) ->
     F = fun() ->
         match_node_action(N1, connected)
     end,
-    ok = unit_testing:wait_for_match(100, F, true),
+    ok = unit_testing:wait_for_match(100, F, true, 100),
     ct:pal("connected action matched !\n", []),
     [{{N1, connected}, _}] = node_tbl(N1, connected),
     {ok, {Pid, #{conn_cb_list := [{conn_cb, CCb}],
@@ -360,7 +356,7 @@ add_disconnect_callback(Config) ->
     % [] = os:cmd("ps aux | grep node1@localhost | grep -v grep | awk '{print$2}' | xargs kill"),
     ok = unit_testing:wait_for_match(50, fun() ->
         os:cmd(io_lib:format("ps aux | grep ~s | grep -v grep", [N1]))
-    end, []),
+    end, [], 100),
     F2 = fun() ->
         timer:sleep(20),
         AA = match_node_action(N1, disconnect),
@@ -371,7 +367,7 @@ add_disconnect_callback(Config) ->
     end,
     % hawk_node is trying to reconnect.
     % wait at least 60 s for now, so that the reconnect attempts finish.
-    ok = unit_testing:wait_for_match(50, F2, true),
+    ok = unit_testing:wait_for_match(50, F2, true, 100),
     ct:pal("both disconnected actions matched !\n", []),
     ok.
 
@@ -402,7 +398,7 @@ remove_connect_callback(Config) ->
     F = fun() ->
         match_node_action(N1, connected)
     end,
-    ok = unit_testing:wait_for_match(100, F, true),
+    ok = unit_testing:wait_for_match(100, F, true, 100),
     [{{N1, connected}, _}] = node_tbl(N1, connected),
     % remote connect callback
     {ok, {_, updated}} = hawk:remove_connect_callback(N1, conn_cb),
@@ -430,7 +426,7 @@ remove_node(Config) ->
     F = fun() ->
         match_node_action(N1, connected)
     end,
-    ok = unit_testing:wait_for_match(100, F, true),
+    ok = unit_testing:wait_for_match(100, F, true, 100),
     ok = hawk:remove_node(N1),
     [] = hawk:nodes().
 
@@ -448,7 +444,7 @@ callback_names(Config) ->
     F = fun() ->
         match_node_action(N1, connected)
     end,
-    ok = unit_testing:wait_for_match(100, F, true),
+    ok = unit_testing:wait_for_match(100, F, true, 100),
     [{{N1, connected}, _}] = node_tbl(N1, connected),
     {ok, _Pid, [conn_cb,disconn_cb]} = hawk:callback_names(N1).
 
@@ -469,7 +465,7 @@ add_node_conn_callback_duplicate(Config) ->
     F = fun() ->
         match_node_action(N1, connected)
     end,
-    ok = unit_testing:wait_for_match(100, F, true),
+    ok = unit_testing:wait_for_match(100, F, true, 100),
     [{{N1, connected}, _}] = node_tbl(N1, connected),
     % Add connect callback
     CCb2 = fun() -> node_action(N1, connected2) end,
@@ -477,7 +473,7 @@ add_node_conn_callback_duplicate(Config) ->
     F2 = fun() ->
         match_node_action(N1, connected2)
     end,
-    ok = unit_testing:wait_for_match(100, F2, true),
+    ok = unit_testing:wait_for_match(100, F2, true, 100),
     {ok, {_Pid, #{conn_cb_list := [{conn_cb2,CCb2}, {conn_cb,CCb}],
                  conn_retry_wait := 100,
                  connected := true,
@@ -496,7 +492,7 @@ add_node_disconn_callback_duplicate(Config) ->
     F = fun() ->
         match_node_action(N1, connected)
     end,
-    ok = unit_testing:wait_for_match(100, F, true),
+    ok = unit_testing:wait_for_match(100, F, true, 100),
     [{{N1, connected}, _}] = node_tbl(N1, connected),
     % Add disconnect callback
     DCb2 = fun() -> node_action(N1, disconnect2) end,
@@ -522,7 +518,7 @@ node_conn_callback_fails(_Config) ->
     F = fun() ->
         match_node_action(N1, connected)
     end,
-    ok = unit_testing:wait_for_match(100, F, true).
+    ok = unit_testing:wait_for_match(100, F, true, 100).
 
 node_disconn_callback_fails(_Config) ->
     ok.

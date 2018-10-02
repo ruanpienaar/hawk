@@ -53,7 +53,7 @@
 % Returns a list of all test cases and groups in the suite. (Mandatory)
 all() ->
     [{group, success_test_group}
-    % ,{group, failure_test_group}
+    ,{group, failure_test_group}
     ].
 
 all_success() ->
@@ -77,12 +77,11 @@ all_success() ->
     ].
 
 all_failure() ->
-    [
-    % add_node_conn_attempts_exceeded_limit
-     % ,add_node_conn_callback_duplicate
-     % ,add_node_disconn_callback_duplicate
-     % ,node_conn_callback_fails
-     % ,node_disconn_callback_fails
+    [add_node_conn_attempts_exceeded_limit
+    ,add_node_conn_callback_duplicate
+    ,add_node_disconn_callback_duplicate
+    ,node_conn_callback_fails
+    ,node_disconn_callback_fails
     ].
 
 % Information function used to return properties for the suite. (Optional)
@@ -94,13 +93,11 @@ suite() ->
 groups() ->
     [
         {success_test_group, 
-            % [shuffle,{repeat,10}], 
-            [],
+            [shuffle,{repeat,10}], 
             all_success()}
-       % ,{failure_test_group, 
-       %      % [shuffle,{repeat,10}], 
-       %      [],
-       %      all_failure()}
+       ,{failure_test_group, 
+            [shuffle,{repeat,10}], 
+            all_failure()}
     ].
 
 % Suite level configuration function, executed before the first test case. (Optional)
@@ -261,7 +258,7 @@ add_node_4(Config) ->
         match_node_action(N1, connected)
     end,
     ok = unit_testing:wait_for_match(100, F, true),
-    [{N1, connected, _}] = node_tbl(N1),
+    [{{N1, connected}, _}] = node_tbl(N1, connected),
     CCb2 = fun() -> node_action(N1, connected2) end,
     DCb2 = fun() -> node_action(N1, disconnect2) end,
     {error, {already_started, _Pid}} =
@@ -291,7 +288,7 @@ add_connect_callback(Config) ->
         match_node_action(N1, connected)
     end,
     ok = unit_testing:wait_for_match(100, F, true),
-    [{N1, connected, _}] = node_tbl(N1),
+    [{{N1, connected}, _}] = node_tbl(N1, connected),
     % Add connect callback
     CCb2 = fun() -> node_action(N1, connected2) end,
     {ok,{_, updated}} = hawk:add_connect_callback(N1, {conn_cb2, CCb2}),
@@ -338,7 +335,7 @@ add_disconnect_callback(Config) ->
     end,
     ok = unit_testing:wait_for_match(100, F, true),
     ct:pal("connected action matched !\n", []),
-    [{N1, connected, _}] = node_tbl(N1),
+    [{{N1, connected}, _}] = node_tbl(N1, connected),
     {ok, {Pid, #{conn_cb_list := [{conn_cb, CCb}],
                  conn_retry_wait := 100,
                  connected := true,
@@ -406,7 +403,7 @@ remove_connect_callback(Config) ->
         match_node_action(N1, connected)
     end,
     ok = unit_testing:wait_for_match(100, F, true),
-    [{N1, connected, _}] = node_tbl(N1),
+    [{{N1, connected}, _}] = node_tbl(N1, connected),
     % remote connect callback
     {ok, {_, updated}} = hawk:remove_connect_callback(N1, conn_cb),
     {ok, {_Pid, #{conn_cb_list := [],
@@ -452,7 +449,7 @@ callback_names(Config) ->
         match_node_action(N1, connected)
     end,
     ok = unit_testing:wait_for_match(100, F, true),
-    [{N1, connected, _}] = node_tbl(N1),
+    [{{N1, connected}, _}] = node_tbl(N1, connected),
     {ok, _Pid, [conn_cb,disconn_cb]} = hawk:callback_names(N1).
 
 add_node_conn_attempts_exceeded_limit(_Config) ->
@@ -473,7 +470,7 @@ add_node_conn_callback_duplicate(Config) ->
         match_node_action(N1, connected)
     end,
     ok = unit_testing:wait_for_match(100, F, true),
-    [{N1, connected, _}] = node_tbl(N1),
+    [{{N1, connected}, _}] = node_tbl(N1, connected),
     % Add connect callback
     CCb2 = fun() -> node_action(N1, connected2) end,
     {ok,{_, updated}} = hawk:add_connect_callback(N1, {conn_cb2, CCb2}),
@@ -500,7 +497,7 @@ add_node_disconn_callback_duplicate(Config) ->
         match_node_action(N1, connected)
     end,
     ok = unit_testing:wait_for_match(100, F, true),
-    [{N1, connected, _}] = node_tbl(N1),
+    [{{N1, connected}, _}] = node_tbl(N1, connected),
     % Add disconnect callback
     DCb2 = fun() -> node_action(N1, disconnect2) end,
     {ok,{_, updated}} = hawk:add_disconnect_callback(N1, {disconn_cb2, DCb2}),
@@ -532,15 +529,15 @@ node_disconn_callback_fails(_Config) ->
 
 %% --------------------------------------------------------------------------------
 
-node_tbl(Node) ->
-    ets:lookup(node_table, Node).
+node_tbl(Node, Action) ->
+    ets:lookup(node_table, {Node, Action}).
 
 node_action(Node, Action) ->
     ct:pal("NODE ~p ACTION ~p\n", [Node, Action]),
     ets:insert(node_table, {{Node, Action}, ?SYSTEM_TIME_FUNC}).
 
 match_node_action(Node, Action) ->
-    case ets:lookup(node_table, Node) of
+    case ets:lookup(node_table, {Node, Action}) of
         [] ->
             false;
         ActionsHistory ->

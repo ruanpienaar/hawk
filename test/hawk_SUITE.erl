@@ -161,12 +161,12 @@ init_per_testcase(_TestCase, Config) ->
     [{nodes, [N1, N2]}| Config].
 
 % Configuration function for a testcase, executed after each test case. (Optional)
-end_per_testcase(TestCase, Config) ->
+end_per_testcase(_TestCase, Config) ->
     % ct:pal("TestCase ~p\n", [TestCase]),
     % io:format("TestCase ~p\n", [TestCase]),
     do_end_per_testcase(Config).
 
-do_end_per_testcase(Config) ->
+do_end_per_testcase(_Config) ->
     true = ets:delete(node_table),
     lists:foreach(fun(N) ->
         ct:pal("Remove node ~p~n", [N]),
@@ -544,5 +544,5 @@ match_node_action(Node, Action) ->
 new_node_name() ->
     list_to_atom(erlang:ref_to_list(make_ref()) -- "#Ref<>...").
 
-new_node_name(Host) when is_list(Host) ->
-    list_to_atom(erlang:ref_to_list(make_ref()) -- "#Ref<>..." ++ "@"++Host).
+% new_node_name(Host) when is_list(Host) ->
+%     list_to_atom(erlang:ref_to_list(make_ref()) -- "#Ref<>..." ++ "@"++Host).

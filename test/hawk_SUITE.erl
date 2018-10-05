@@ -93,10 +93,12 @@ suite() ->
 groups() ->
     [
         {success_test_group, 
-            [shuffle,{repeat,10}], 
+            %%[shuffle,{repeat,10}], 
+            [],
             all_success()}
        ,{failure_test_group, 
-            [shuffle,{repeat,10}], 
+            %%[shuffle,{repeat,10}], 
+            [],
             all_failure()}
     ].
 

@@ -1,12 +1,7 @@
 case os:getenv("TRAVIS") of
   "true" ->
     JobId = os:getenv("TRAVIS_JOB_ID"),
-    io:format("TRAVIS_JOB_ID ============>  ~p  <-----------\n", [JobId]),
-    io:format("WHATS IN \"_build/default/lib/\" ??????? ~p\n\n", [os:cmd("ls -l /home/travis/build/ruanpienaar/hawk/_build/default/lib/")]),
-    C = lists:keystore(coveralls_service_job_id, 1, CONFIG, {coveralls_service_job_id, JobId}),
-    io:format("Config!!!!!!!!!!!!!!!!!! ~p\n", [C]),
-    C;
+    lists:keystore(coveralls_service_job_id, 1, CONFIG, {coveralls_service_job_id, JobId});
   _ ->
-    io:format("WHAT THE HELLL!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!\n", []),
     CONFIG
 end.

@@ -27,4 +27,4 @@ unit_test:
 integration_test:
   stage: test
   script:
-    - make rebar3 && ./rebar3 ct -v
+    - epmd -daemon && make rebar3 && ./rebar3 ct -v

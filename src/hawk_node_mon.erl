@@ -47,25 +47,27 @@ loop() ->
             loop();
         {nodeup, Node} ->
             % true = ets:insert(?MODULE,
-            case whereis(hawk_nodes_sup:id(Node)) of
+            ok = case whereis(hawk_nodes_sup:id(Node)) of
                 undefined -> % Another node connected to our cluster...
                     error_logger:error_msg("!nodeup -> Node:~p not hawk node SYSTEM_TIME:~p~n",
                                            [Node, erlang:system_time()]);
                 Pid ->
                     error_logger:error_msg("nodeup -> Node:~p NodePid:~p~n~n",
                               [Node, Pid]),
-                    Pid ! {nodeup, Node}
+                    Pid ! {nodeup, Node},
+                    ok
             end,
             loop();
         {nodedown, Node} ->
-            case whereis(hawk_nodes_sup:id(Node)) of
+            ok = case whereis(hawk_nodes_sup:id(Node)) of
                 undefined ->
                     error_logger:error_msg("!nodedown -> Node:~p not registered as ~p~n",
                                            [Node, hawk_nodes_sup:id(Node)]);
                 Pid ->
                     error_logger:error_msg("nodedown -> Node:~p NodePid:~p~n~n",
                               [Node, Pid]),
-                    Pid ! {nodedown, Node}
+                    Pid ! {nodedown, Node},
+                    ok
             end,
             loop();
         Msg ->

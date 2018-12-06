@@ -1,0 +1,30 @@
+image: erlang:21
+
+stages:
+  - build
+  - test
+
+compile:
+  stage: build
+  script:
+    - make
+
+dialyzer:
+  stage: test
+  script:
+    - ./rebar3 dialyzer
+
+xref:
+  stage: test
+  script:
+    - ./rebar3 xref
+
+unit_test:
+  stage: test
+  script:
+    - ./rebar3 eunit -v
+
+integration_test:
+  stage: test
+  script:
+    - ./rebar3 ct -v

@@ -12,19 +12,19 @@ compile:
 dialyzer:
   stage: test
   script:
-    - ./rebar3 dialyzer
+    - make rebar3 && ./rebar3 dialyzer
 
 xref:
   stage: test
   script:
-    - ./rebar3 xref
+    - make rebar3 && ./rebar3 xref
 
 unit_test:
   stage: test
   script:
-    - ./rebar3 eunit -v
+    - make rebar3 && ./rebar3 eunit -v
 
 integration_test:
   stage: test
   script:
-    - ./rebar3 ct -v
+    - make rebar3 && ./rebar3 ct -v

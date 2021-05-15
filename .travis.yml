@@ -7,11 +7,6 @@ before_script:
   kerl list installations
 
 otp_release:
-    - 17.5
-    - 18.3
-    - 19.3
-    - 20.3
-    - 20.3.8.22
     - 21.3
     - 21.3.8.1
     - 22.3

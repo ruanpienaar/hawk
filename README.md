@@ -7,4 +7,4 @@ The current implementation connects to a specified node,
 triggers your own callback once connected, monitors the node, and if it should
 happen to disconnect, calls the disconnect callback, and attempt to reconnect periodically.
 
-Hawk only work in Erlang OTP versions with Maps.
+Hawk only works with versions of Erlang OTP supporting the Maps data structure.

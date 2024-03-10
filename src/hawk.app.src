@@ -1,6 +1,6 @@
 {application, hawk,
  [
-  {description, ""},
+  {description, "hawk otp node distribution callback application"},
   {vsn, "1"},
   {registered, []},
   {applications, [

@@ -240,9 +240,9 @@ connected_callback(CCBL) ->
             error_logger:error_msg("connected_callback ~p\n", [Name]),
             F()
         catch
-            C:E ->
+            C:E:S ->
                 error_logger:error_msg("hawk_node connected callback ~p failed ~p ~p ~p",
-                    [Name, C, E, erlang:get_stacktrace()])
+                    [Name, C, E, S])
         end
     end, CCBL).
 
@@ -255,8 +255,8 @@ disconnect_or_delete_callback(DCBL) ->
             error_logger:error_msg("disconnect_or_delete_callback ~p\n", [Name]),
             F()
         catch
-            C:E ->
+            C:E:S ->
                 error_logger:error_msg("hawk_node disconnected callback ~p failed ~p ~p ~p",
-                    [Name, C, E, erlang:get_stacktrace()])
+                    [Name, C, E, S])
         end
     end, DCBL).

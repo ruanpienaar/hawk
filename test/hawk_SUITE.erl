@@ -213,7 +213,7 @@ node_exists(Config) ->
     ct:pal("TEST node_exists wait stage 3\n", []),
     {ok,_Pid, []} = hawk:node_exists(N1),
     ct:pal("TEST node_exists wait stage 4\n", []),
-    {ok, {_Pid,#{conn_cb_list := [],
+    {ok, {_,#{conn_cb_list := [],
                  conn_retry_wait := 100,
                  connected := true,
                  connection_retries := _,
@@ -348,7 +348,7 @@ add_disconnect_callback(Config) ->
                  conn_retry_wait := 100,
                  connected := true,
                  connection_retries := _,
-                 cookie := _Cookie,
+                 cookie := _,
                  disc_cb_list := [{disconn_cb2, DCb2}, {disconn_cb, DCb}],
                  node := N1}}} = hawk:node_state(N1),
     % Stop the remote note, to test the disconnect callback
@@ -484,7 +484,7 @@ add_node_conn_callback_duplicate(Config) ->
                  disc_cb_list := [{disconn_cb, DCb}],
                  node := N1}}} = hawk:node_state(N1),
     % Duplicate
-    {ok, {_Pid, duplicate}} = hawk:add_connect_callback(N1, {conn_cb2, CCb2}).
+    {ok, {_, duplicate}} = hawk:add_connect_callback(N1, {conn_cb2, CCb2}).
 
 add_node_disconn_callback_duplicate(Config) ->
     {nodes, [N1, _N2]} = lists:keyfind(nodes, 1, Config),
@@ -507,7 +507,7 @@ add_node_disconn_callback_duplicate(Config) ->
                  disc_cb_list := [{disconn_cb2, DCb2}, {disconn_cb, DCb}],
                  node := N1}}} = hawk:node_state(N1),
     % Duplicate
-    {ok, {_Pid, duplicate}} = hawk:add_disconnect_callback(N1, {disconn_cb2, DCb2}).
+    {ok, {_, duplicate}} = hawk:add_disconnect_callback(N1, {disconn_cb2, DCb2}).
 
 node_conn_callback_fails(_Config) ->
     {nodes, [N1, _N2]} = lists:keyfind(nodes, 1, _Config),

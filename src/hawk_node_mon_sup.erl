@@ -1,24 +1,32 @@
 -module(hawk_node_mon_sup).
 
 -behaviour(supervisor).
--export([init/1]).
 
-% API
 -export([
+    init/1,
     start_link/0
 ]).
 
 start_link() ->
-    supervisor:start_link({local, ?MODULE}, ?MODULE, []).
+    supervisor:start_link(?MODULE, {}).
 
-%% @private
-init([]) ->
-    Child1 =
-        {hawk_node_mon,
-            {hawk_node_mon, start_link, []},
-            permanent, 5000, worker,
-            [hawk_node_mon]},
-
-    Children = [Child1],
-    RestartStrategy = {one_for_one, 500, 10},
-    {ok, {RestartStrategy, Children}}.
+init({}) ->
+    {
+        ok,
+        #{
+            restart => one_for_one,
+            intensity => 500,
+            period => timer:seconds(5)
+        },
+        [
+            #{
+                id => hawk_node_mon,
+                start => {hawk_node_mon, start_link, []},
+                restart => permanent,
+                significant => false,
+                shutdown => timer:seconds(60),
+                type => worker,
+                modules => [hawk_node_mon]
+            }
+        ]
+    }.

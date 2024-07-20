@@ -1,32 +1,42 @@
 -module(hawk_sup).
 
 -behaviour(supervisor).
--export([init/1]).
 
-% API
 -export([
+    init/1,
     start_link/0
 ]).
 
-%% TODO: add maps...
-    % #{id := Id,
-    %   start := {Mod, start_link, Args},
-    %   restart => permanent,
-    %   shutdown => 5000,
-    %   type => Type,
-    %   modules => [Mod]}.
--define(CHILD(Mod),
-    {Mod, {Mod, start_link, []}, permanent, 5000, supervisor, [Mod]}).
-
-%% ===================================================================
-%% API functions
-%% ===================================================================
-
 start_link() ->
-    supervisor:start_link({local, ?MODULE}, ?MODULE, []).
+    supervisor:start_link(?MODULE, {}).
 
-init([]) ->
-    {ok, { {one_for_one, 500, 10}, [
-        ?CHILD(hawk_nodes_sup),
-        ?CHILD(hawk_node_mon_sup)
-    ]} }.
+init({}) ->
+    {
+        ok,
+        #{
+            strategy => one_for_all,
+            intensity => 100,
+            period => timer:seconds(5),
+            auto_shutdown => all_significant
+        },
+        [
+            #{
+                id => hawk_nodes_sup,
+                start => {hawk_nodes_sup, start_link, []},
+                restart => permanent,
+                significant => true,
+                shutdown => infinity,
+                type => supervisor,
+                modules => [hawk_nodes_sup]
+            },
+            #{
+                id => hawk_node_mon_sup,
+                start => {hawk_node_mon_sup, start_link, []},
+                restart => permanent,
+                significant => true,
+                shutdown => infinity,
+                type => supervisor,
+                modules => [hawk_node_mon_sup]
+            }
+        ]
+    }.

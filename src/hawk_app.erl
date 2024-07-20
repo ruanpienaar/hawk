@@ -2,15 +2,13 @@
 
 -behaviour(application).
 
-%% Application callbacks
--export([start/2, stop/1]).
-
-%% ===================================================================
-%% Application callbacks
-%% ===================================================================
+-export([
+    start/2,
+    stop/1
+]).
 
 start(_StartType, _StartArgs) ->
-    hawk_sup:start_link().
+    {ok, _sup_pid} = hawk_sup:start_link().
 
 stop(_State) ->
     ok.

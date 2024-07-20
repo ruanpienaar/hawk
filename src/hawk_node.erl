@@ -1,5 +1,7 @@
 -module(hawk_node).
 
+-include_lib("kernel/include/logger.hrl").
+
 -export([
     start_link/4,
     do_start_link/4
@@ -33,14 +35,9 @@ start_link(Node, Cookie, ConnectedCallback, DisconnectedCallback) ->
 do_start_link(Node, Cookie, ConnectedCallback, DisconnectedCallback) ->
     State = initial_state(Node, Cookie, ConnectedCallback, DisconnectedCallback),
     true = erlang:register(hawk_nodes_sup:id(Node), self()),
-    error_logger:error_msg("Hawk node ~p registered as PID ~p\n", [hawk_nodes_sup:id(Node), self()]),
-    % process_flag(priority, high),
-    error_logger:error_msg("~p registered SYSTEM_TIME:~p~n",
-                           [Node, ?SYSTEM_TIME_FUNC]),
-    % ok = hawk_node_mon:add_node(Node,Cookie),
     ok = hawk_node_mon:add_node(hawk_nodes_sup:id(Node), self()),
     ok = proc_lib:init_ack({ok, self()}),
-    case lists:member(Node, nodes()++nodes(hidden)) of
+    case lists:member(Node, nodes() ++ nodes(hidden)) of
         true ->
             % Already known
             do_start_loop(State);
@@ -51,47 +48,61 @@ do_start_link(Node, Cookie, ConnectedCallback, DisconnectedCallback) ->
 
 % -spec initial_state(node(), atom(), hawk:callbacks(), hawk:callbacks()) -> map().
 initial_state(Node, Cookie, ConnectedCallbacks, DisconnectedCallbacks) ->
-    #{ connected=>false,
-       node=>Node,
-       cookie=>Cookie,
-       conn_cb_list=>ConnectedCallbacks,
-       disc_cb_list=>DisconnectedCallbacks,
-       connection_retries=>application:get_env(hawk, connection_retries, 600),
-       conn_retry_wait=>application:get_env(hawk, conn_retry_wait, 100)
+    #{ connected => false,
+       node => Node,
+       cookie => Cookie,
+       conn_cb_list => ConnectedCallbacks,
+       disc_cb_list => DisconnectedCallbacks,
+       connection_retries => application:get_env(hawk, connection_retries, 600),
+       conn_retry_wait => application:get_env(hawk, conn_retry_wait, 100)
     }.
 
 %% TODO: maybe configure for auto execute callbacks, based on current state.
 %% sometimes you do not want the callbacks to be executed immediately.
 -spec do_wait(map()) -> ok.
 do_wait(#{ connection_retries := ConnTries, node := Node }) when ConnTries =< 0 ->
-    error_logger:info_msg("max connection attempts: dropping ~p soon~n", [Node]),
+    ?LOG_NOTICE(#{max_connection_attempts => Node}),
+    % We're doing this async, not to block ourselves ( same pid )
     spawn(fun() -> ok = hawk:remove_node(Node) end),
     deathbed();
-do_wait(#{ connection_retries := ConnTries, conn_retry_wait := ConnTryWait, connected := false,
-           node := Node, cookie := Cookie, conn_cb_list := CCBL, disc_cb_list := DCBL } = State) when ConnTries > 0 ->
-    % io:format("HAWK_NODE DO_WAIT!!!~n"),
-    true = erlang:set_cookie(Node,Cookie),
+do_wait(
+        #{
+            connection_retries := ConnTries,
+            conn_retry_wait := ConnTryWait,
+            connected := false,
+            node := Node,
+            cookie := Cookie,
+            conn_cb_list := CCBL,
+            disc_cb_list := DCBL
+        } = State
+    ) when ConnTries > 0 ->
+    true = erlang:set_cookie(Node, Cookie),
     case net_kernel:connect_node(Node) of
         true ->
             % Fake send ourselves a {nodeup,...} message.
             % Hidden/Slave Nodes are not sending {nodeup, ...} messages.
-            % io:format("Going to send a nodeup myself~n"),
+
+            % TODO: check if slave/hidden node, and only then send own nodeup
+            % TODO: remove this, and test again... seems weird old code
+
             self() ! {nodeup, Node},
             ok;
         false ->
             ok
     end,
     receive
-        % We get these, once the node startups up.
+        % Sent from hawk_node_mon
         {nodeup, Node} ->
             do_start_loop(State);
+        % Sent from hawk_node_mon
         {nodedown, Node} ->
-            % error_logger:error_msg("do_wait {nodedown, Node} ~p ~p~n", [{nodedown, Node}, erlang:process_info(self(), registered_name)]),
-            do_wait(State#{ connected => false, connection_retries => ConnTries-1 });
+            do_wait(State#{
+                connected => false,
+                connection_retries => ConnTries - 1
+            });
         {call, state, ReqPid} ->
             ReqPid ! {response, State},
             do_wait(State);
-        %% Not connected yet, cannot call connect callback
         {call, {add_connect_callback, {Name,ConnectCallback}}, ReqPid} when is_function(ConnectCallback) ->
             do_wait(case lists:keyfind(Name, 1, CCBL) of
                 false ->
@@ -101,7 +112,6 @@ do_wait(#{ connection_retries := ConnTries, conn_retry_wait := ConnTryWait, conn
                     ReqPid ! {response, duplicate},
                     State
             end);
-        %% Not connected yet, can call disconnect callback
         {call, {add_disconnect_callback, {Name,DisconnectCallback}}, ReqPid} when is_function(DisconnectCallback) ->
             do_wait(case lists:keyfind(Name, 1, DCBL) of
                 false ->
@@ -150,9 +160,11 @@ loop(#{conn_cb_list := CCBL, disc_cb_list := DCBL, node := Node} = State) ->
     receive
         {'EXIT', Who, shutdown} ->
             do_terminate(Who, DCBL, State, loop);
+        % Sent from hawk_node_mon
         {nodeup, Node} ->
             % error_logger:error_msg("loop {nodeup, Node} ~p ~p~n", [{nodedown, Node}, erlang:process_info(self(), registered_name)]),
             loop(State);
+        % Sent from hawk_node_mon
         {nodedown, Node} ->
             % error_logger:error_msg("loop {nodedown, Node} ~p ~p~n", [{nodedown, Node}, erlang:process_info(self(), registered_name)]),
             ok = disconnect_or_delete_callback(DCBL),

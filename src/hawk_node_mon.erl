@@ -1,4 +1,7 @@
 -module(hawk_node_mon).
+
+-include_lib("kernel/include/logger.hrl").
+
 -export([
     start_link/0,
     do_start_link/0,
@@ -15,7 +18,7 @@ start_link() ->
     proc_lib:start_link(?MODULE, do_start_link, []).
 
 do_start_link() ->
-    process_flag(trap_exit, true),
+    _ = process_flag(trap_exit, true),
     true = erlang:register(?MODULE, self()),
     ?MODULE = ets:new(?MODULE, [named_table, private, ordered_set]),
     ok = net_kernel:monitor_nodes(true),
@@ -38,42 +41,33 @@ add_node(Node, NodePid) ->
 loop() ->
     receive
         {add_node, Node, NodePid, ReqPid} ->
-            error_logger:error_msg("add_node -> Node:~p NodePid:~p~n~n",
-                      [Node, NodePid]),
+            ?LOG_INFO(#{add_node => Node}),
             true = erlang:monitor_node(Node, true),
             true = erlang:link(NodePid),
-            % error_logger:error_msg("", []),
             ReqPid ! ok,
             loop();
         {nodeup, Node} ->
             % true = ets:insert(?MODULE,
-            ok = case whereis(hawk_nodes_sup:id(Node)) of
-                undefined -> % Another node connected to our cluster...
-                    error_logger:error_msg("!nodeup -> Node:~p not hawk node SYSTEM_TIME:~p~n",
-                                           [Node, erlang:system_time()]);
+            case whereis(hawk_nodes_sup:id(Node)) of
+                undefined -> % Something else was adding nodes, possibly supress logging
+                    ?LOG_ERROR(#{hawk_nodes_sup_unknown_nodeup => Node});
                 Pid ->
-                    error_logger:error_msg("nodeup -> Node:~p NodePid:~p~n~n",
-                              [Node, Pid]),
+                    ?LOG_INFO(#{nodeup => Node}),
                     Pid ! {nodeup, Node},
                     ok
             end,
             loop();
         {nodedown, Node} ->
             ok = case whereis(hawk_nodes_sup:id(Node)) of
-                undefined ->
-                    error_logger:error_msg("!nodedown -> Node:~p not registered as ~p~n",
-                                           [Node, hawk_nodes_sup:id(Node)]);
+                undefined ->  % Something else was removing nodes, possibly supress logging
+                    ?LOG_ERROR(#{hawk_nodes_sup_unknown_nodedown => Node});
                 Pid ->
-                    error_logger:error_msg("nodedown -> Node:~p NodePid:~p~n~n",
-                              [Node, Pid]),
+                    ?LOG_INFO(#{nodedown => Node})
                     Pid ! {nodedown, Node},
                     ok
             end,
             loop();
         Msg ->
-            error_logger:error_msg(
-                "~p received ~p~n",
-                [?MODULE, Msg]
-            ),
+            ?LOG_ERROR(#{module => ?MODULE, unknown_message => Msg})
             loop()
     end.

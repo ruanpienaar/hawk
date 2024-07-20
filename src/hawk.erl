@@ -24,32 +24,32 @@
 ]).
 -endif.
 
--define(R, hawk_req).
+% -define(R, hawk_req).
 
--type hawk_node_call_errors_return() :: {'error', 'connecting'} |
-                                        {error, no_such_node} |
-                                        'timeout'.
--type hawk_node_call_return() :: hawk_node_call_errors_return() |
-                                 {'ok', any()}.
--type callback_names_return() :: {ok, pid(), list(callback_name())} |
-                                 hawk_node_call_errors_return().
--type callbacks() :: maybe_improper_list() |
-                     list(callback_type()).
--type callback_name() :: any().
--type callback() :: fun().
--type callback_type() :: {callback_name(), callback()}.
--type hawk_node_cmd() ::
-    callbacks |
-    state |
-    {add_connect_callback, callback_type()} |
-    {add_disconnect_callback, callback_type()} |
-    {remove_connect_callback, callback_name()} |
-    {remove_disconnect_callback, callback_name()}.
+% -type hawk_node_call_errors_return() :: {'error', 'connecting'} |
+%                                         {error, no_such_node} |
+%                                         'timeout'.
+% -type hawk_node_call_return() :: hawk_node_call_errors_return() |
+%                                  {'ok', any()}.
+% -type callback_names_return() :: {ok, pid(), list(callback_name())} |
+%                                  hawk_node_call_errors_return().
+% -type callbacks() :: maybe_improper_list() |
+%                      list(callback_type()).
+% -type callback_name() :: any().
+% -type callback() :: fun().
+% -type callback_type() :: {callback_name(), callback()}.
+% -type hawk_node_cmd() ::
+%     callbacks |
+%     state |
+%     {add_connect_callback, callback_type()} |
+%     {add_disconnect_callback, callback_type()} |
+%     {remove_connect_callback, callback_name()} |
+%     {remove_disconnect_callback, callback_name()}.
 
--export_type([
-    callbacks/0,
-    callback_type/0
-]).
+% -export_type([
+%     callbacks/0,
+%     callback_type/0
+% ]).
 
 -spec nodes() -> list(term()).
 nodes() ->
@@ -59,67 +59,68 @@ nodes() ->
       end || {N,_,worker,[hawk_node]}
       <- supervisor:which_children(hawk_nodes_sup) ].
 
--spec node_exists(atom()) -> callback_names_return().
+% -spec node_exists(atom()) -> callback_names_return().
 node_exists(Node) ->
     callback_names(Node).
 
--spec add_node(atom(), atom())
-        -> hawk_nodes_sup:start_child_return() |
-           hawk_node_call_errors_return().
+% -spec add_node(atom(), atom())
+%         -> hawk_nodes_sup:start_child_return() |
+%            hawk_node_call_errors_return().
 add_node(Node, Cookie) ->
     add_node(Node, Cookie, [], []).
 
--spec add_node(atom(), atom(), callbacks(), callbacks())
-        -> hawk_nodes_sup:start_child_return() |
-           hawk_node_call_errors_return().
+% -spec add_node(atom(), atom(), callbacks(), callbacks())
+%         -> hawk_nodes_sup:start_child_return() |
+%            hawk_node_call_errors_return().
 add_node(Node, Cookie, ConnectedCallback, DisconnectedCallback)
         when is_atom(Node) andalso
              is_atom(Cookie) andalso
              is_list(ConnectedCallback) andalso
              is_list(DisconnectedCallback) ->
-    case node_exists(Node) of
-        {error, no_such_node} ->
-            hawk_nodes_sup:start_child(Node, Cookie, ConnectedCallback, DisconnectedCallback);
-        {ok, Pid, _CallbackNames} ->
-            ok = lists:foreach(fun({Name,ConnectCallback}) ->
-                %% hawk_node handles the dups
-                {ok, {Pid, updated}} = add_connect_callback(Node, {Name,ConnectCallback})
-            end, ConnectedCallback),
-            ok = lists:foreach(fun({Name, DisconnectCallback}) ->
-                %% hawk_node handles the dups
-                {ok, {Pid, updated}} = add_disconnect_callback(Node, {Name, DisconnectCallback})
-            end, DisconnectedCallback),
-            {error, {already_started, Pid}};
-        {error, connecting} ->
-            {error, connecting};
-        timeout ->
-            timeout
-    end.
+    hawk_nodes_sup:start_child(Node, Cookie, ConnectedCallback, DisconnectedCallback).
+    % case node_exists(Node) of
+    %     {error, no_such_node} ->
+    %         hawk_nodes_sup:start_child(Node, Cookie, ConnectedCallback, DisconnectedCallback);
+    %     {ok, Pid, _CallbackNames} ->
+    %         ok = lists:foreach(fun({Name,ConnectCallback}) ->
+    %             %% hawk_node handles the dups
+    %             {ok, {Pid, updated}} = add_connect_callback(Node, {Name,ConnectCallback})
+    %         end, ConnectedCallback),
+    %         ok = lists:foreach(fun({Name, DisconnectCallback}) ->
+    %             %% hawk_node handles the dups
+    %             {ok, {Pid, updated}} = add_disconnect_callback(Node, {Name, DisconnectCallback})
+    %         end, DisconnectedCallback),
+    %         {error, {already_started, Pid}};
+    %     {error, connecting} ->
+    %         {error, connecting};
+    %     timeout ->
+    %         timeout
+    % end.
 
--spec add_connect_callback(atom(), callback_type())
-        -> hawk_node_call_return().
+% -spec add_connect_callback(atom(), callback_type())
+%         -> hawk_node_call_return().
 add_connect_callback(Node, {Name, ConnectCallback})
         when is_function(ConnectCallback) ->
     call(Node, {add_connect_callback, {Name, ConnectCallback}}).
 
--spec add_disconnect_callback(atom(), callback_type())
-        -> hawk_node_call_return().
+% -spec add_disconnect_callback(atom(), callback_type())
+%         -> hawk_node_call_return().
 add_disconnect_callback(Node, {Name, DisconnectCallback})
         when is_function(DisconnectCallback) ->
     call(Node, {add_disconnect_callback, {Name, DisconnectCallback}}).
 
--spec remove_connect_callback(atom(), callback_name())
-        -> hawk_node_call_return().
+% -spec remove_connect_callback(atom(), callback_name())
+%         -> hawk_node_call_return().
 remove_connect_callback(Node, Name) ->
     call(Node, {remove_connect_callback, Name}).
 
--spec remove_disconnect_callback(atom(), callback_name())
-        -> hawk_node_call_return().
+% -spec remove_disconnect_callback(atom(), callback_name())
+%         -> hawk_node_call_return().
 remove_disconnect_callback(Node, Name) ->
     call(Node, {remove_disconnect_callback, Name}).
 
--spec remove_node(atom())
-        -> hawk_nodes_sup:delete_child_return().
+% -spec remove_node(atom())
+%         -> hawk_nodes_sup:delete_child_return().
 remove_node(Node) ->
     hawk_nodes_sup:delete_child(Node).
 
@@ -128,13 +129,13 @@ remove_node(Node) ->
 % update_cookie(_Node, _NewCookie) ->
 %     ok.
 
--spec node_state(atom())
-        -> hawk_node_call_return().
+% -spec node_state(atom())
+%         -> hawk_node_call_return().
 node_state(Node) ->
     call(Node, state).
 
--spec callback_names(atom())
-        -> callback_names_return().
+% -spec callback_names(atom())
+%         -> callback_names_return().
 callback_names(Node) ->
     case call(Node, callbacks) of
         {ok, {Pid, {ConCBS, DisCBS}}} when is_list(ConCBS) andalso is_list(DisCBS) ->
@@ -151,8 +152,8 @@ callback_names(Node) ->
     end.
 
 % TODO: test hidden nodes.
--spec connected_nodes()
-        -> list(atom()).
+% -spec connected_nodes()
+%         -> list(atom()).
 connected_nodes() ->
     lists:filter(fun(Node) ->
         {_Pid, State} = node_state(Node),
@@ -161,8 +162,8 @@ connected_nodes() ->
 
 %%-------------------------------------------------------------------------------------------
 
--spec call(atom(), hawk_node_cmd())
-        -> hawk_node_call_return().
+% -spec call(atom(), hawk_node_cmd())
+%         -> hawk_node_call_return().
 call(Node, Cmd) ->
     call(Node, Cmd, 1000).
 
@@ -180,8 +181,8 @@ call(Node, Cmd) ->
 % -type hawk_node_call_errors_return() :: {'error', 'connecting'} | 'timeout'.
 % -type hawk_node_call_return() :: hawk_node_call_errors_return() | {'ok', term()}.
 
--spec call(atom(), hawk_node_cmd(), pos_integer())
-        -> hawk_node_call_return().
+% -spec call(atom(), hawk_node_cmd(), pos_integer())
+%         -> hawk_node_call_return().
 call(Node, Cmd, Timeout) ->
     Name = hawk_nodes_sup:id(Node),
     case whereis(Name) of

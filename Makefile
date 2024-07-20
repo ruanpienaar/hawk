@@ -20,5 +20,5 @@ rebar3:
 
 xref:
 	@./rebar3 xref
-	
+
 check: compile xref dialyzer test

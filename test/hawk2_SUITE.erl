@@ -17,6 +17,7 @@
 %% add non existing node, then add node with PEER.
 -export([
     add_node1/1
+    ,add_node_still_connecting/1
     ,add_node2/1
     ,add_both_nodes/1
     ,add_node_then_remove/1
@@ -31,6 +32,7 @@
 all() ->
     [
         add_node1
+        ,add_node_still_connecting
         ,add_node2
         ,add_both_nodes
         ,add_node_then_remove
@@ -88,6 +90,13 @@ init_per_testcase(_TestCase, Config) ->
 
 end_per_testcase(_TestCase, Config) ->
     {nodes, [{Peer1, Node1}, {Peer2, Node2}]} = lists:keyfind(nodes, 1, Config),
+    % catch any still connecting nodes
+    lists:foreach(
+        fun({Node, _}) ->
+            _ = hawk_nodes_sup:delete_child(Node)
+        end,
+        hawk:nodes()
+    ),
     _ = hawk_nodes_sup:delete_child(Node1),
     _ = hawk_nodes_sup:delete_child(Node2),
     ok = peer:stop(Peer1),
@@ -119,6 +128,23 @@ add_node1(Config) ->
     } = hawk:node_state(Node1),
     [Node1] = nodes()++nodes(hidden),
     [{Node1, true}] = hawk:nodes().
+
+add_node_still_connecting(_Config) ->
+    [] = nodes()++nodes(hidden),
+    [] = hawk:nodes(),
+    Node1 = 'somenonexistingnode@localhost',
+    {ok, _} = hawk:add_node('somenonexistingnode@localhost', cookie),
+    % F = fun() -> element(1, hawk:node_state(Node1)) == connected end,
+    % ok = unit_testing:wait_for_match(10, F, true, 100),
+    {ok, {[], []}} = hawk:node_exists(Node1),
+    {disconnected,#{connected := false,
+                           node := somenonexistingnode@localhost,
+                           cookie := cookie,conn_cb_list := [],
+                           backoff_type := fixed,backoff_wait := 100,
+                           disc_cb_list := [],connection_retries := 599}
+    } = hawk:node_state(Node1),
+    [] = nodes()++nodes(hidden),
+    [{somenonexistingnode@localhost, false}] = hawk:nodes().
 
 add_node2(Config) ->
     {nodes, [{_Peer1, _Node1}, {_Peer2, Node2}]} = lists:keyfind(nodes, 1, Config),

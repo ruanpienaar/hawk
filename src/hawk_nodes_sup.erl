@@ -8,7 +8,8 @@
     start_child/4,
     delete_child/1,
     id/1,
-    children/0
+    children/0,
+    nodes/0
 ]).
 
 -type start_child_return() :: {'error', term()} |
@@ -23,6 +24,7 @@ start_link() ->
     supervisor:start_link({local, ?MODULE}, ?MODULE, {}).
 
 init({}) ->
+    _ = ets:new(hawk_nodes, [named_table, set, public]),
     {
         ok,
         {
@@ -47,8 +49,8 @@ start_child(Node, Cookie, ConnectedCallback, DisconnectedCallback)
             {ok, _pid};
         {ok, _pid, _info} ->
             {ok, _pid};
-        {error, already_started} ->
-            {ok, whereis(id(Node))}
+        {error, {already_started, Pid}} ->
+            {ok, Pid}
     end.
 
 do_start_child(Node, Cookie, ConnectedCallback, DisconnectedCallback) ->
@@ -61,7 +63,7 @@ do_start_child(Node, Cookie, ConnectedCallback, DisconnectedCallback) ->
                 start_link,
                 [Node, Cookie, ConnectedCallback, DisconnectedCallback]
             },
-            restart => transient,
+            restart => permanent,
             significant => false,
             shutdown => timer:seconds(60),
             type => worker,
@@ -72,15 +74,22 @@ do_start_child(Node, Cookie, ConnectedCallback, DisconnectedCallback) ->
 -spec delete_child(atom()) -> delete_child_return().
 delete_child(Node) when is_atom(Node) ->
     NodeId = id(Node),
-    case supervisor:terminate_child(?MODULE, NodeId) of
-        {error, not_found} ->
-            {error, no_such_node};
-        ok ->
-            ok = supervisor:delete_child(?MODULE, NodeId)
-    end.
+    Ret =
+        case supervisor:terminate_child(?MODULE, NodeId) of
+            {error, not_found} ->
+                {error, no_such_node};
+            ok ->
+                ok = supervisor:delete_child(?MODULE, NodeId)
+        end,
+    _ = erlang:disconnect_node(Node),
+    true = ets:delete(hawk_nodes, Node),
+    Ret.
 
 id(Node) ->
-    list_to_atom("hawk_node_"++atom_to_list(Node)).
+    list_to_atom(atom_to_list(Node)).
 
 children() ->
     supervisor:which_children(?MODULE).
+
+nodes() ->
+    ets:tab2list(hawk_nodes).

@@ -53,11 +53,12 @@
 
 -spec nodes() -> list(term()).
 nodes() ->
-    [ begin
-        [$h,$a,$w,$k,$_,$n,$o,$d,$e,$_|Rest] = atom_to_list(N),
-        list_to_atom(Rest)
-      end || {N,_,worker,[hawk_node]}
-      <- supervisor:which_children(hawk_nodes_sup) ].
+    % [ begin
+    %     [$h,$a,$w,$k,$_,$n,$o,$d,$e,$_|Rest] = atom_to_list(N),
+    %     list_to_atom(Rest)
+    %   end || {N,_,worker,[hawk_node]}
+    %   <- supervisor:which_children(hawk_nodes_sup) ].
+    hawk_nodes_sup:nodes().
 
 % -spec node_exists(atom()) -> callback_names_return().
 node_exists(Node) ->

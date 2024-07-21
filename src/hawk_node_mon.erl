@@ -80,6 +80,7 @@ loop() ->
                     ok
             end,
             loop();
+        % {'EXIT', Reason, Pid}
         Msg ->
             ?LOG_ERROR(#{module => ?MODULE, unknown_message => Msg}),
             loop()

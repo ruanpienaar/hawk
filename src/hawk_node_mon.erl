@@ -40,8 +40,9 @@ add_node(Node, NodePid) ->
 
 loop() ->
     receive
+    % TODO: rename to monitor_node
         {add_node, Node, NodePid, ReqPid} ->
-            ?LOG_INFO(#{add_node => Node}),
+            ?LOG_NOTICE(#{going_to_monitor_node => Node}),
             true = erlang:monitor_node(Node, true),
             true = erlang:link(NodePid),
             ReqPid ! ok,
@@ -50,9 +51,15 @@ loop() ->
             % true = ets:insert(?MODULE,
             case whereis(hawk_nodes_sup:id(Node)) of
                 undefined -> % Something else was adding nodes, possibly supress logging
-                    ?LOG_ERROR(#{hawk_nodes_sup_unknown_nodeup => Node});
+                    ?LOG_ERROR(#{
+                        hawk_nodes_sup_unknown_nodeup => Node,
+                        all_nodes => supervisor:which_children(hawk_nodes_sup)
+                    });
                 Pid ->
-                    ?LOG_INFO(#{nodeup => Node}),
+                    ?LOG_NOTICE(#{
+                        nodeup => Node,
+                        all_nodes => supervisor:which_children(hawk_nodes_sup)
+                    }),
                     Pid ! {nodeup, Node},
                     ok
             end,
@@ -60,14 +67,20 @@ loop() ->
         {nodedown, Node} ->
             ok = case whereis(hawk_nodes_sup:id(Node)) of
                 undefined ->  % Something else was removing nodes, possibly supress logging
-                    ?LOG_ERROR(#{hawk_nodes_sup_unknown_nodedown => Node});
+                    ?LOG_ERROR(#{
+                        hawk_nodes_sup_unknown_nodedown => Node,
+                        all_nodes => supervisor:which_children(hawk_nodes_sup)
+                    });
                 Pid ->
-                    ?LOG_INFO(#{nodedown => Node})
+                    ?LOG_NOTICE(#{
+                        nodedown => Node,
+                        all_nodes => supervisor:which_children(hawk_nodes_sup)
+                    }),
                     Pid ! {nodedown, Node},
                     ok
             end,
             loop();
         Msg ->
-            ?LOG_ERROR(#{module => ?MODULE, unknown_message => Msg})
+            ?LOG_ERROR(#{module => ?MODULE, unknown_message => Msg}),
             loop()
     end.

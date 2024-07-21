@@ -1,5 +1,11 @@
 -module(hawk_SUITE).
--include_lib("eunit/include/eunit.hrl").
+
+% TODO: use peer
+
+
+% -include_lib("eunit/include/eunit.hrl").
+-include_lib("common_test/include/ct.hrl").
+
 -export([
     all/0,
     suite/0,
@@ -40,7 +46,6 @@
     node_conn_callback_fails/1,
     node_disconn_callback_fails/1
 ]).
--include_lib("common_test/include/ct.hrl").
 
 -ifdef(SYSTEM_TIME).
 -define(SYSTEM_TIME_FUNC, erlang:now()).
@@ -86,18 +91,18 @@ all_failure() ->
 
 % Information function used to return properties for the suite. (Optional)
 suite() ->
-    [{timetrap, {minutes, 10}} % wait for 10, better than the default 30min wait.
+    [{timetrap, {minutes, 1}} % wait for 10, better than the default 30min wait.
     ].
 
 % For declaring test case groups. (Optional)
 groups() ->
     [
-        {success_test_group, 
-            %%[shuffle,{repeat,10}], 
+        {success_test_group,
+            %%[shuffle,{repeat,10}],
             [],
             all_success()}
-       ,{failure_test_group, 
-            %%[shuffle,{repeat,10}], 
+       ,{failure_test_group,
+            %%[shuffle,{repeat,10}],
             [],
             all_failure()}
     ].
@@ -178,7 +183,7 @@ do_end_per_testcase(_Config) ->
     % {N1s, N1s} = lists:keyfind(N1s, 1, Config),
     % {nodes, Nodes} = lists:keyfind(nodes, 1, Config),
     % erlang_testing:ct_cleanup_N1s(N1s).
-    
+
     os:cmd("ps aux | grep node1@localhost | grep -v grep | awk '{print$2}' | xargs kill -9"),
     ok = unit_testing:wait_for_match(100, fun() ->
         os:cmd("ps aux | grep node1@localhost | grep -v grep")

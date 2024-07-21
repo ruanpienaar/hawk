@@ -131,6 +131,7 @@ remove_node(Node) ->
 
 % -spec node_state(atom())
 %         -> hawk_node_call_return().
+% TODO: Move to hawk_node.erl
 node_state(Node) ->
     call(Node, state).
 

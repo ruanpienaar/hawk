@@ -21,7 +21,7 @@ hawk_app_unit_test_() ->
                 % meck opts
                 [unstick, passthrough],
                 % expects
-                [{start_link, fun({local, hawk_sup}, hawk_sup, []) -> {ok, self()} end}
+                [{start_link, fun(hawk_sup, {}) -> {ok, self()} end}
                 ]
             }
         ],

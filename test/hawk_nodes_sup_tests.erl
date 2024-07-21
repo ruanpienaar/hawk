@@ -28,17 +28,21 @@ hawk_sup_unit_test_() ->
                 % meck opts
                 [unstick, passthrough],
                 % expects
-                [{start_link, fun({local, hawk_nodes_sup}, hawk_nodes_sup, []) -> {ok, self()} end},
+                [{start_link, fun({local, hawk_nodes_sup}, hawk_nodes_sup, {}) -> {ok, self()} end},
                  {start_child, fun
-                    (hawk_nodes_sup,
-                        % #{id       := 'hawk_node_foo@bar',
-                        %   start    := {hawk_node, start_link, [foo@bar, cookie, [], []]},
-                        %   restart  := transient,
-                        %   shutdown := 5000,
-                        %   type     := worker,
-                        %   modules  := [hawk_node]}) ->
-                        {'hawk_node_foo@bar', {hawk_node, start_link, [foo@bar, cookie, [], []]}, transient, 5000, worker, [hawk_node]}) ->
-                            {ok, self()};
+                    (
+                        hawk_nodes_sup,
+                        #{
+                            id := 'hawk_node_foo@bar',
+                            start := {hawk_node2, start_link, [foo@bar, cookie, [], []]},
+                            restart := transient,
+                            significant := false,
+                            shutdown := 60000,
+                            type := worker,
+                            modules := [hawk_node2]
+                        }
+                    ) ->
+                        {ok, self()};
                     (A, B) ->
                         ?debugFmt("~p ~p", [A, B]),
                         error
@@ -70,8 +74,18 @@ start_link() ->
 
 init() ->
     ?assertEqual(
-        {ok,{{one_for_one,500,10},[]}},
-        hawk_nodes_sup:init([])
+        {
+            ok,
+            {
+                #{
+                    restart => one_for_one,
+                    intensity => 500,
+                    period => 5
+                },
+                []
+            }
+        },
+        hawk_nodes_sup:init({})
     ).
 
 start_child() ->

@@ -27,7 +27,7 @@ hawk_sup_unit_test_() ->
                 % meck opts
                 [unstick, passthrough],
                 % expects
-                [{start_link, fun({local, hawk_sup}, hawk_sup, []) -> {ok, self()} end}
+                [{start_link, fun(hawk_sup, {}) -> {ok, self()} end}
                 ]
             }
         ],
@@ -43,13 +43,32 @@ start_link() ->
 
 init() ->
     ?assertEqual(
-        {ok, { {one_for_one, 500, 10}, [
-            {hawk_nodes_sup,
-                {hawk_nodes_sup, start_link, []}, permanent, 5000, supervisor,
-                [hawk_nodes_sup]},
-            {hawk_node_mon_sup,
-                {hawk_node_mon_sup, start_link, []}, permanent, 5000, supervisor,
-                [hawk_node_mon_sup]}
-        ]} },
-        hawk_sup:init([])
+        {
+            ok,
+            {
+                #{
+                    intensity => 100,
+                    period => 5,
+                    strategy => one_for_all
+                },
+                [
+                    #{
+                        id => hawk_nodes_sup,
+                        restart => permanent,
+                        shutdown => infinity,
+                        start => {hawk_nodes_sup, start_link, []},
+                        type => supervisor,
+                        modules => [hawk_nodes_sup]},
+                    #{
+                        id => hawk_node_mon_sup,
+                        restart => permanent,
+                        shutdown => infinity,
+                        start => {hawk_node_mon_sup, start_link, []},
+                        type => supervisor,
+                        modules => [hawk_node_mon_sup]
+                    }
+                ]
+            }
+        },
+        hawk_sup:init({})
     ).

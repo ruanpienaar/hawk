@@ -7,7 +7,8 @@
     start_link/0,
     start_child/4,
     delete_child/1,
-    id/1
+    id/1,
+    children/0
 ]).
 
 -type start_child_return() :: {'error', term()} |
@@ -24,12 +25,14 @@ start_link() ->
 init({}) ->
     {
         ok,
-        #{
-            restart => one_for_one,
-            intensity => 500,
-            period => timer:seconds(5)
-        },
-        []
+        {
+            #{
+                restart => one_for_one,
+                intensity => 500,
+                period => 5
+            },
+            []
+        }
     }.
 
 -spec start_child(atom(), atom(), hawk:callbacks(), hawk:callbacks())
@@ -53,12 +56,16 @@ do_start_child(Node, Cookie, ConnectedCallback, DisconnectedCallback) ->
         ?MODULE,
         #{
             id => id(Node),
-            start => {hawk_node, start_link, [Node, Cookie, ConnectedCallback, DisconnectedCallback]},
+            start => {
+                hawk_node2,
+                start_link,
+                [Node, Cookie, ConnectedCallback, DisconnectedCallback]
+            },
             restart => transient,
             significant => false,
             shutdown => timer:seconds(60),
             type => worker,
-            modules => [hawk_node]
+            modules => [hawk_node2]
         }
     ).
 
@@ -74,3 +81,6 @@ delete_child(Node) when is_atom(Node) ->
 
 id(Node) ->
     list_to_atom("hawk_node_"++atom_to_list(Node)).
+
+children() ->
+    supervisor:which_children(?MODULE).

@@ -13,30 +13,29 @@ start_link() ->
 init({}) ->
     {
         ok,
-        #{
-            strategy => one_for_all,
-            intensity => 100,
-            period => timer:seconds(5),
-            auto_shutdown => all_significant
-        },
-        [
+        {
             #{
-                id => hawk_nodes_sup,
-                start => {hawk_nodes_sup, start_link, []},
-                restart => permanent,
-                significant => true,
-                shutdown => infinity,
-                type => supervisor,
-                modules => [hawk_nodes_sup]
+                strategy => one_for_all,
+                intensity => 100,
+                period => 5
             },
-            #{
-                id => hawk_node_mon_sup,
-                start => {hawk_node_mon_sup, start_link, []},
-                restart => permanent,
-                significant => true,
-                shutdown => infinity,
-                type => supervisor,
-                modules => [hawk_node_mon_sup]
-            }
-        ]
+            [
+                #{
+                    id => hawk_nodes_sup,
+                    start => {hawk_nodes_sup, start_link, []},
+                    restart => permanent,
+                    shutdown => infinity,
+                    type => supervisor,
+                    modules => [hawk_nodes_sup]
+                },
+                #{
+                    id => hawk_node_mon_sup,
+                    start => {hawk_node_mon_sup, start_link, []},
+                    restart => permanent,
+                    shutdown => infinity,
+                    type => supervisor,
+                    modules => [hawk_node_mon_sup]
+                }
+            ]
+        }
     }.

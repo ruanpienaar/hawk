@@ -32,11 +32,11 @@ all() ->
 
 init_per_suite(Config) ->
     % _ = ets:new(test_table, [named_table, public, ordered_set]),
-    {ok, _} = dbg:tracer(),
-    {ok, _} = dbg:p(all, call),
+    % {ok, _} = dbg:tracer(),
+    % {ok, _} = dbg:p(all, call),
     % {ok, _} = dbg:tpl(hawk_node_mon, cx),
     % {ok, _} = dbg:tpl(hawk_node2, cx),
-    {ok, _} = dbg:tpl(hawk_node2, cx),
+    % {ok, _} = dbg:tpl(hawk_node2, cx),
     % {ok, _} = dbg:tpl(hawk_nodes_sup, cx),
     {ok, _} = erlang_testing:start_distrib('hawk_SUITE@localhost', shortnames),
     true = auth:set_cookie(hawk),

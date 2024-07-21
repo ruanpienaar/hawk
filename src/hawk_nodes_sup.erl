@@ -63,7 +63,7 @@ do_start_child(Node, Cookie, ConnectedCallback, DisconnectedCallback) ->
                 start_link,
                 [Node, Cookie, ConnectedCallback, DisconnectedCallback]
             },
-            restart => permanent,
+            restart => transient,
             significant => false,
             shutdown => timer:seconds(60),
             type => worker,
@@ -74,16 +74,16 @@ do_start_child(Node, Cookie, ConnectedCallback, DisconnectedCallback) ->
 -spec delete_child(atom()) -> delete_child_return().
 delete_child(Node) when is_atom(Node) ->
     NodeId = id(Node),
-    Ret =
-        case supervisor:terminate_child(?MODULE, NodeId) of
-            {error, not_found} ->
-                {error, no_such_node};
-            ok ->
-                ok = supervisor:delete_child(?MODULE, NodeId)
-        end,
-    _ = erlang:disconnect_node(Node),
-    true = ets:delete(hawk_nodes, Node),
-    Ret.
+    case hawk_node2:is_node_started(Node) of
+        false ->
+            {error, no_such_node};
+        true ->
+            ok = gen_statem:stop(NodeId, shutdown, infinity),
+            ok = supervisor:delete_child(?MODULE, NodeId),
+            _ = erlang:disconnect_node(Node),
+            true = ets:delete(hawk_nodes, Node),
+            ok
+    end.
 
 id(Node) ->
     list_to_atom(atom_to_list(Node)).

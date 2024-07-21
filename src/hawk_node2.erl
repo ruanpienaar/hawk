@@ -6,6 +6,7 @@
 
 -export([
     start_link/4,
+    is_node_started/1,
     init/1,
     callback_mode/0,
     handle_event/4,
@@ -26,6 +27,14 @@ start_link(Node, Cookie, ConnectedCallbacks, DisconnectedCallbacks) ->
         []
     ).
 
+is_node_started(Node) ->
+    case whereis(hawk_nodes_sup:id(Node)) of
+        undefined ->
+            false;
+        Pid when is_pid(Pid) ->
+            true
+    end.
+
 going_to_remove_node(_Node) ->
     ok.
 
@@ -40,6 +49,8 @@ callback_mode() ->
     [handle_event_function, state_enter].
 
 init({Node, Cookie, ConnectedCallbacks, DisconnectedCallbacks}) ->
+    _ = process_flag(trap_exit, true),
+    ok = hawk_node_mon2:add_node(hawk_nodes_sup:id(Node), self()),
     true = ets:insert(hawk_nodes, {Node, false}),
     Data = initial_data(Node, Cookie, ConnectedCallbacks, DisconnectedCallbacks),
     ?LOG_NOTICE(#{data => Data}),
@@ -63,6 +74,20 @@ handle_event(
     ?LOG_NOTICE(#{data => Data}),
     FromPid ! {response, {CCBL, DCBL}},
     keep_state_and_data;
+handle_event(
+        info,
+        {add_connect_callback, {Name, ConnectCallback}},
+        _State,
+        #{ conn_cb_list := CCBL } = Data
+    ) ->
+    {keep_state, Data#{ conn_cb_list => lists:append(CCBL, [{Name, ConnectCallback}]) }};
+handle_event(
+        info,
+        {add_disconnect_callback, {Name, DisconnectCallback}},
+        _State,
+        #{ disc_cb_list := DCBL } = Data
+    ) ->
+    {keep_state, Data#{ disc_cb_list => lists:append(DCBL, [{Name, DisconnectCallback}]) }};
 handle_event(
         enter,
         _,
@@ -93,14 +118,14 @@ handle_event(
     ) ->
     ?LOG_NOTICE(#{data => Data}),
     {next_state, connected, Data#{connected => true}};
-handle_event(
-        info,
-        {nodeup, Node},
-        connected,
-        #{ node := Node } = Data
-    ) ->
-    ?LOG_NOTICE(#{data => Data}),
-    keep_state_and_data;
+% handle_event(
+%         info,
+%         {nodeup, Node},
+%         connected,
+%         #{ node := Node } = Data
+%     ) ->
+%     ?LOG_NOTICE(#{data => Data}),
+%     keep_state_and_data;
 handle_event(
         info,
         {nodeup, Node},
@@ -114,14 +139,6 @@ handle_event(
         info,
         {nodedown, Node},
         connected,
-        #{ node := Node } = Data
-    ) ->
-    ?LOG_NOTICE(#{data => Data}),
-    {next_state, disconnected, Data#{connected => false}};
-handle_event(
-        info,
-        {nodedown, Node},
-        disconnected,
         #{
             node := Node,
             disc_cb_list := DisconnectCallbacks
@@ -130,6 +147,16 @@ handle_event(
     ?LOG_NOTICE(#{data => Data}),
     ok = run_callbacks(disconnect, DisconnectCallbacks),
     {next_state, disconnected, Data#{connected => false}};
+% If Node fails or does not exist, the message {nodedown, Node} is delivered to the process.
+% This might be sent from hawk_node_mon a second time round. Debug why...
+handle_event(
+        info,
+        {nodedown, _Node},
+        disconnected,
+        Data
+    ) ->
+    ?LOG_NOTICE(#{data => Data}),
+    keep_state_and_data;
 handle_event(
         state_timeout,
         reconnect,
@@ -146,13 +173,14 @@ handle_event(
     true = erlang:set_cookie(Node, Cookie),
     case net_kernel:connect_node(Node) of
         true ->
-            ok = hawk_node_mon2:add_node(hawk_nodes_sup:id(Node), self()),
+            % ok = hawk_node_mon2:add_node(hawk_nodes_sup:id(Node), self()),
             Data2 = Data#{
                 backoff_type => hawk_config:backoff_type(),
                 backoff_wait => hawk_config:backoff_wait(),
                 connected => true
             },
-            {next_state, connected, Data2};
+            % {next_state, connected, Data2};
+            {keep_state, Data2};
         false ->
             NextBackoffWait = next_backoff(BackoffType, BackoffWait),
             Data2 = Data#{
@@ -166,6 +194,12 @@ handle_event(
 code_change(_Vsn, State, Data, _Extra) ->
     {ok, State, Data}.
 
+terminate(shutdown, State, #{disc_cb_list := DisconnectCallbacks} = Data) ->
+    ok = run_callbacks(disconnect, DisconnectCallbacks),
+    ?LOG_NOTICE(#{
+        terminate_state => State,
+        terminate_data => Data
+    });
 terminate(Reason, State, Data) ->
     ?LOG_WARNING(#{
         terminate_reason => Reason,
@@ -211,7 +245,7 @@ run_callbacks(Type, Callbacks) ->
                     F()
             end,
             ?LOG_INFO(#{
-                end_of_connect_callback => Name,
+                end_of_callback => Name,
                 type => Type
             })
         catch

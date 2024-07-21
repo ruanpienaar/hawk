@@ -100,12 +100,14 @@ add_node(Node, Cookie, ConnectedCallback, DisconnectedCallback)
 
 % -spec add_connect_callback(atom(), callback_type())
 %         -> hawk_node_call_return().
+% PS Appends to the existing connect callbacks.
 add_connect_callback(Node, {Name, ConnectCallback})
         when is_function(ConnectCallback) ->
     call(Node, {add_connect_callback, {Name, ConnectCallback}}).
 
 % -spec add_disconnect_callback(atom(), callback_type())
 %         -> hawk_node_call_return().
+% PS Appends to the existing connect callbacks.
 add_disconnect_callback(Node, {Name, DisconnectCallback})
         when is_function(DisconnectCallback) ->
     call(Node, {add_disconnect_callback, {Name, DisconnectCallback}}).

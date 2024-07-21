@@ -6,3 +6,4 @@
 ☐ Create other erlang nodes for testing ( NOT SLAVES )
 ☐ child spec as map, is not working on R17
 ☐ Handle when distribution not started.
+☐ experiment with ( -proto_dist hawk_tcp ) -no_epmd -> https://www.erlang.org/doc/apps/erts/alt_dist

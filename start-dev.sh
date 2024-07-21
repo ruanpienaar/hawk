@@ -1,7 +1,11 @@
 #!/bin/sh
 set -x
 cd `dirname $0`
-exec erl -sname hawk -config $PWD/config/sys.config -pa _build/default/lib/*/ebin -boot start_sasl -setcookie hawk -proto_dist hawk_tcp \
+exec erl \
+-sname hawk \
+-config $PWD/config/sys.config \
+-pa _build/default/lib/*/ebin \
+-setcookie hawk \
 -eval 'ok = application:start(hawk).' -hidden
 
 # NOT working :(

@@ -12,6 +12,10 @@
     nodes/0
 ]).
 
+-ifdef(TEST).
+-export([db_init/0]).
+-endif.
+
 -type start_child_return() :: {'error', term()} |
                               {'ok','undefined' | pid()}.
 -type delete_child_return() :: ok | {error, no_such_node}.
@@ -24,7 +28,7 @@ start_link() ->
     supervisor:start_link({local, ?MODULE}, ?MODULE, {}).
 
 init({}) ->
-    _ = ets:new(hawk_nodes, [named_table, set, public]),
+    db_init(),
     {
         ok,
         {
@@ -36,6 +40,9 @@ init({}) ->
             []
         }
     }.
+
+db_init() ->
+    _ = ets:new(hawk_nodes, [named_table, set, public]).
 
 -spec start_child(atom(), atom(), hawk:callbacks(), hawk:callbacks())
     -> start_child_return().

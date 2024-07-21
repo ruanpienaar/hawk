@@ -6,6 +6,11 @@
 
 -export([
     start_link/4,
+    callback_names/1,
+    add_connect_callback/2,
+    add_disconnect_callback/2,
+    remove_connect_callback/2,
+    remove_disconnect_callback/2,
     is_node_started/1,
     init/1,
     callback_mode/0,
@@ -26,6 +31,21 @@ start_link(Node, Cookie, ConnectedCallbacks, DisconnectedCallbacks) ->
         {Node, Cookie, ConnectedCallbacks, DisconnectedCallbacks},
         []
     ).
+
+callback_names(Node) ->
+    gen_statem:call(hawk_nodes_sup:id(Node), callbacks).
+
+add_connect_callback(Node, {Name, ConnectCallback}) ->
+    gen_statem:call(hawk_nodes_sup:id(Node), {add_connect_callback, {Name, ConnectCallback}}).
+
+add_disconnect_callback(Node, {Name, DisconnectCallback}) ->
+    gen_statem:call(hawk_ndoes_sup:id(Node), {add_disconnect_callback, {Name, DisconnectCallback}}).
+
+remove_connect_callback(Node, Name) ->
+    gen_statem:call(hawk_ndoes_sup:id(Node), {remove_connect_callback, Name}).
+
+remove_disconnect_callback(Node, Name) ->
+    gen_statem:call(hawk_ndoes_sup:id(Node), {remove_disconnect_callback, Name}).
 
 is_node_started(Node) ->
     case whereis(hawk_nodes_sup:id(Node)) of
@@ -66,28 +86,45 @@ handle_event(
     FromPid ! {response, Data},
     keep_state_and_data;
 handle_event(
-        info,
-        {call, callbacks, FromPid},
+        {call, From},
+        callbacks,
         _State,
         #{ conn_cb_list := CCBL, disc_cb_list := DCBL } = Data
     ) ->
     ?LOG_NOTICE(#{data => Data}),
-    FromPid ! {response, {CCBL, DCBL}},
-    keep_state_and_data;
+    {keep_state_and_data, [{reply, From, {ok, {CCBL, DCBL}}}]};
 handle_event(
-        info,
+        {call, From},
         {add_connect_callback, {Name, ConnectCallback}},
         _State,
         #{ conn_cb_list := CCBL } = Data
     ) ->
-    {keep_state, Data#{ conn_cb_list => lists:append(CCBL, [{Name, ConnectCallback}]) }};
+    Data2 = Data#{ conn_cb_list => lists:append(CCBL, [{Name, ConnectCallback}]) },
+    {keep_state, Data2, [{reply, From, ok}]};
 handle_event(
-        info,
+        {call, From},
         {add_disconnect_callback, {Name, DisconnectCallback}},
         _State,
         #{ disc_cb_list := DCBL } = Data
     ) ->
-    {keep_state, Data#{ disc_cb_list => lists:append(DCBL, [{Name, DisconnectCallback}]) }};
+    Data2 = Data#{ disc_cb_list => lists:append(DCBL, [{Name, DisconnectCallback}]) },
+    {keep_state, Data2, [{reply, From, ok}]};
+handle_event(
+        {call, From},
+        {remove_connect_callback, Name},
+        _State,
+        #{ conn_cb_list := CCBL } = Data
+    ) ->
+    Data2 = Data#{ conn_cb_list => lists:keydelete(Name, 1, CCBL)},
+    {keep_state, Data2, [{reply, From, ok}]};
+handle_event(
+        {call, From},
+        {remove_disconnect_callback, Name},
+        _State,
+        #{ disc_cb_list := DCBL } = Data
+    ) ->
+    Data2 = Data#{ disc_cb_list => lists:keydelete(Name, 1, DCBL)},
+    {keep_state, Data2, [{reply, From, ok}]};
 handle_event(
         enter,
         _,

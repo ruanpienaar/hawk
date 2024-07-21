@@ -11,18 +11,17 @@
     remove_connect_callback/2,
     remove_disconnect_callback/2,
     remove_node/1,
-    %update_cookie/2,
     node_state/1,
     callback_names/1,
     connected_nodes/0
 ]).
 
--ifdef(TEST).
--export([
-    call/2,
-    call/3
-]).
--endif.
+% -ifdef(TEST).
+% -export([
+%     call/2,
+%     call/3
+% ]).
+% -endif.
 
 % -define(R, hawk_req).
 
@@ -62,7 +61,7 @@ nodes() ->
 
 % -spec node_exists(atom()) -> callback_names_return().
 node_exists(Node) ->
-    callback_names(Node).
+    hawk_node2:callback_names(Node).
 
 % -spec add_node(atom(), atom())
 %         -> hawk_nodes_sup:start_child_return() |
@@ -79,81 +78,68 @@ add_node(Node, Cookie, ConnectedCallback, DisconnectedCallback)
              is_list(ConnectedCallback) andalso
              is_list(DisconnectedCallback) ->
     hawk_nodes_sup:start_child(Node, Cookie, ConnectedCallback, DisconnectedCallback).
-    % case node_exists(Node) of
-    %     {error, no_such_node} ->
-    %         hawk_nodes_sup:start_child(Node, Cookie, ConnectedCallback, DisconnectedCallback);
-    %     {ok, Pid, _CallbackNames} ->
-    %         ok = lists:foreach(fun({Name,ConnectCallback}) ->
-    %             %% hawk_node handles the dups
-    %             {ok, {Pid, updated}} = add_connect_callback(Node, {Name,ConnectCallback})
-    %         end, ConnectedCallback),
-    %         ok = lists:foreach(fun({Name, DisconnectCallback}) ->
-    %             %% hawk_node handles the dups
-    %             {ok, {Pid, updated}} = add_disconnect_callback(Node, {Name, DisconnectCallback})
-    %         end, DisconnectedCallback),
-    %         {error, {already_started, Pid}};
-    %     {error, connecting} ->
-    %         {error, connecting};
-    %     timeout ->
-    %         timeout
-    % end.
 
 % -spec add_connect_callback(atom(), callback_type())
 %         -> hawk_node_call_return().
 % PS Appends to the existing connect callbacks.
 add_connect_callback(Node, {Name, ConnectCallback})
         when is_function(ConnectCallback) ->
-    call(Node, {add_connect_callback, {Name, ConnectCallback}}).
+    % call(Node, {add_connect_callback, {Name, ConnectCallback}}).
+    hawk_node2:add_connect_callback(Node, {Name, ConnectCallback}).
 
 % -spec add_disconnect_callback(atom(), callback_type())
 %         -> hawk_node_call_return().
 % PS Appends to the existing connect callbacks.
 add_disconnect_callback(Node, {Name, DisconnectCallback})
         when is_function(DisconnectCallback) ->
-    call(Node, {add_disconnect_callback, {Name, DisconnectCallback}}).
+    hawk_node2:add_disconnect_callback(Node, {Name, DisconnectCallback}).
 
 % -spec remove_connect_callback(atom(), callback_name())
 %         -> hawk_node_call_return().
 remove_connect_callback(Node, Name) ->
-    call(Node, {remove_connect_callback, Name}).
+    hawk_node2:remove_connect_callback(Node, Name).
 
 % -spec remove_disconnect_callback(atom(), callback_name())
 %         -> hawk_node_call_return().
 remove_disconnect_callback(Node, Name) ->
-    call(Node, {remove_disconnect_callback, Name}).
+    hawk_node2:remove_disconnect_callback(Node, Name).
 
 % -spec remove_node(atom())
 %         -> hawk_nodes_sup:delete_child_return().
 remove_node(Node) ->
     hawk_nodes_sup:delete_child(Node).
 
-% -spec update_cookie(atom(), atom())
-%         -> ok.
-% update_cookie(_Node, _NewCookie) ->
-%     ok.
-
 % -spec node_state(atom())
 %         -> hawk_node_call_return().
 % TODO: Move to hawk_node.erl
 node_state(Node) ->
-    call(Node, state).
+    sys:get_state(hawk_nodes_sup:id(Node)).
 
 % -spec callback_names(atom())
 %         -> callback_names_return().
 callback_names(Node) ->
-    case call(Node, callbacks) of
-        {ok, {Pid, {ConCBS, DisCBS}}} when is_list(ConCBS) andalso is_list(DisCBS) ->
-            Callbacknames = lists:map(fun({Name,_}) ->
+    case node_exists(Node) of
+        {ok, {ConCBS, DisCBS}} ->
+            lists:map(fun({Name,_}) ->
                 Name
-            end, lists:flatten([ConCBS,DisCBS])),
-            {ok, Pid, Callbacknames};
-        {error, no_such_node} ->
-            {error, no_such_node};
-        {error, connecting} ->
-            {error, connecting};
-        timeout ->
-            timeout
+            end, lists:append(ConCBS, DisCBS));
+        Error ->
+            Error
     end.
+
+    % case call(Node, callbacks) of
+    %     {ok, {Pid, {ConCBS, DisCBS}}} when is_list(ConCBS) andalso is_list(DisCBS) ->
+    %         Callbacknames = lists:map(fun({Name,_}) ->
+    %             Name
+    %         end, lists:flatten([ConCBS,DisCBS])),
+    %         {ok, Pid, Callbacknames};
+    %     {error, no_such_node} ->
+    %         {error, no_such_node};
+    %     {error, connecting} ->
+    %         {error, connecting};
+    %     timeout ->
+    %         timeout
+    % end.
 
 % TODO: test hidden nodes.
 % -spec connected_nodes()
@@ -161,15 +147,15 @@ callback_names(Node) ->
 connected_nodes() ->
     lists:filter(fun(Node) ->
         {_Pid, State} = node_state(Node),
-        State =/= {error,connecting}
+        State =/= {error, connecting}
     end, hawk:nodes()).
 
 %%-------------------------------------------------------------------------------------------
 
 % -spec call(atom(), hawk_node_cmd())
 %         -> hawk_node_call_return().
-call(Node, Cmd) ->
-    call(Node, Cmd, 1000).
+% call(Node, Cmd) ->
+%     call(Node, Cmd, 1000).
 
 % hawk:call(atom(),'callbacks' |
 %                  'state' |
@@ -187,20 +173,20 @@ call(Node, Cmd) ->
 
 % -spec call(atom(), hawk_node_cmd(), pos_integer())
 %         -> hawk_node_call_return().
-call(Node, Cmd, Timeout) ->
-    Name = hawk_nodes_sup:id(Node),
-    case whereis(Name) of
-        undefined ->
-            {error, no_such_node};
-        Pid ->
-            Pid ! {call, Cmd, self()},
-            receive
-                {response, connecting} ->
-                    {error, connecting};
-                {response, Response} ->
-                    {ok, {Pid, Response}}
-            after
-                Timeout ->
-                    timeout
-            end
-    end.
+% call(Node, Cmd, Timeout) ->
+%     Name = hawk_nodes_sup:id(Node),
+%     case whereis(Name) of
+%         undefined ->
+%             {error, no_such_node};
+%         Pid ->
+%             Pid ! {call, Cmd, self()},
+%             receive
+%                 {response, connecting} ->
+%                     {error, connecting};
+%                 {response, Response} ->
+%                     {ok, {Pid, Response}}
+%             after
+%                 Timeout ->
+%                     timeout
+%             end
+%     end.

@@ -211,10 +211,15 @@ handle_event(
 code_change(_Vsn, State, Data, _Extra) ->
     {ok, State, Data}.
 
-terminate(shutdown, State, #{disc_cb_list := DisconnectCallbacks} = Data) ->
+terminate(shutdown, disconnected, Data) ->
+    ?LOG_NOTICE(#{
+        terminate_state => disconnect,
+        terminate_data => Data
+    });
+terminate(shutdown, connected, #{disc_cb_list := DisconnectCallbacks} = Data) ->
     ok = run_callbacks(disconnect, DisconnectCallbacks),
     ?LOG_NOTICE(#{
-        terminate_state => State,
+        terminate_state => connected,
         terminate_data => Data
     });
 terminate(Reason, State, Data) ->

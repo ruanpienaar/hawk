@@ -18,6 +18,7 @@
 -export([
     add_node1/1
     ,add_node_still_connecting/1
+    ,add_node_still_connecting_then_remove/1
     ,add_node2/1
     ,add_both_nodes/1
     ,add_node_then_remove/1
@@ -33,6 +34,7 @@ all() ->
     [
         add_node1
         ,add_node_still_connecting
+        ,add_node_still_connecting_then_remove
         ,add_node2
         ,add_both_nodes
         ,add_node_then_remove
@@ -133,18 +135,59 @@ add_node_still_connecting(_Config) ->
     [] = nodes()++nodes(hidden),
     [] = hawk:nodes(),
     Node1 = 'somenonexistingnode@localhost',
-    {ok, _} = hawk:add_node('somenonexistingnode@localhost', cookie),
+    {ok, _} = hawk:add_node(
+        'somenonexistingnode@localhost',
+        cookie,
+        [{add_1, fun() -> ets:insert(test_table,{1, Node1}) end}],
+        [{remove_1, fun() -> ets:insert(test_table,{1, Node1}) end}]
+    ),
     % F = fun() -> element(1, hawk:node_state(Node1)) == connected end,
     % ok = unit_testing:wait_for_match(10, F, true, 100),
-    {ok, {[], []}} = hawk:node_exists(Node1),
+    {ok, {[{add_1, _}], [{remove_1, _}]}} = hawk:node_exists(Node1),
     {disconnected,#{connected := false,
-                           node := somenonexistingnode@localhost,
-                           cookie := cookie,conn_cb_list := [],
-                           backoff_type := fixed,backoff_wait := 100,
-                           disc_cb_list := [],connection_retries := 599}
+                    node := somenonexistingnode@localhost,
+                    cookie := cookie,
+                    conn_cb_list := [{add_1, _}],
+                    backoff_type := fixed,
+                    backoff_wait := 100,
+                    disc_cb_list := [{remove_1, _}],
+                    connection_retries := 599}
     } = hawk:node_state(Node1),
     [] = nodes()++nodes(hidden),
-    [{somenonexistingnode@localhost, false}] = hawk:nodes().
+    [{somenonexistingnode@localhost, false}] = hawk:nodes(),
+    [] = ets:tab2list(test_table).
+
+add_node_still_connecting_then_remove(_Config) ->
+    [] = nodes()++nodes(hidden),
+    [] = hawk:nodes(),
+    Node1 = 'somenonexistingnode@localhost',
+    {ok, _} = hawk:add_node(
+        'somenonexistingnode@localhost',
+        cookie,
+        [{add_1, fun() -> ets:insert(test_table,{1, Node1}) end}],
+        [{remove_1, fun() -> ets:insert(test_table,{1, Node1}) end}]
+    ),
+    % F = fun() -> element(1, hawk:node_state(Node1)) == connected end,
+    % ok = unit_testing:wait_for_match(10, F, true, 100),
+    {ok, {[{add_1, _}], [{remove_1, _}]}} = hawk:node_exists(Node1),
+    {disconnected,#{connected := false,
+                    node := somenonexistingnode@localhost,
+                    cookie := cookie,
+                    conn_cb_list := [{add_1, _}],
+                    backoff_type := fixed,
+                    backoff_wait := 100,
+                    disc_cb_list := [{remove_1, _}],
+                    connection_retries := 599}
+    } = hawk:node_state(Node1),
+    [] = nodes()++nodes(hidden),
+    [{somenonexistingnode@localhost, false}] = hawk:nodes(),
+    ok = hawk:remove_node(Node1),
+    FRem = fun() -> hawk_nodes_sup:children() end,
+    ok = unit_testing:wait_for_match(10, FRem, [], 100),
+    [] = nodes()++nodes(hidden),
+    [] = hawk:nodes(),
+    [] = ets:tab2list(test_table),
+    ok.
 
 add_node2(Config) ->
     {nodes, [{_Peer1, _Node1}, {_Peer2, Node2}]} = lists:keyfind(nodes, 1, Config),

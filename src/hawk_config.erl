@@ -4,7 +4,9 @@
     connection_retries/0,
     conn_retry_wait/0,
     backoff_type/0,
-    backoff_wait/0
+    backoff_wait/0,
+    callbacks_async/0,
+    show_callback_stacktrace/0
 ]).
 
 % TODO: deprecate
@@ -26,3 +28,9 @@ backoff_type() ->
 
 backoff_wait() ->
     application:get_env(hawk, ?FUNCTION_NAME, 100).
+
+callbacks_async() ->
+    application:get_env(hawk, ?FUNCTION_NAME, false).
+
+show_callback_stacktrace() ->
+    application:get_env(hawk, ?FUNCTION_NAME, false).

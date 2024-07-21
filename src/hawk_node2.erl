@@ -76,9 +76,13 @@ handle_event(
         enter,
         _,
         connected,
-        #{ node := Node } = Data
+        #{
+            node := Node,
+            conn_cb_list := ConnectCallbacks
+        } = Data
     ) ->
     ?LOG_NOTICE(#{data => Data}),
+    ok = run_callbacks(connect, ConnectCallbacks),
     true = ets:insert(hawk_nodes, {Node, true}),
     {keep_state, Data#{connected => true}};
 handle_event(
@@ -118,9 +122,13 @@ handle_event(
         info,
         {nodedown, Node},
         disconnected,
-        #{ node := Node } = Data
+        #{
+            node := Node,
+            disc_cb_list := DisconnectCallbacks
+        } = Data
     ) ->
     ?LOG_NOTICE(#{data => Data}),
+    ok = run_callbacks(disconnect, DisconnectCallbacks),
     {next_state, disconnected, Data#{connected => false}};
 handle_event(
         state_timeout,
@@ -184,3 +192,42 @@ next_backoff({exponential, Times, MaxTimes}, BackoffWait) when Times >= MaxTimes
     BackoffWait;
 next_backoff({exponential, Times, MaxTimes}, BackoffWait) when Times < MaxTimes ->
     BackoffWait bsl 1.
+
+run_callbacks(Type, Callbacks) ->
+    Async = hawk_config:callbacks_async(),
+    ShowCallbackStacktrace = hawk_config:show_callback_stacktrace(),
+    lists:foreach(fun({Name, F}) ->
+        ?LOG_INFO(#{
+            start_callback => Name,
+            type => Type
+        }),
+        %% TODO: Maybe log callback fun somewhere as info/debug
+        %% TODO: maybe spawn, or allow to specify whether callbacks may block or not...
+        try
+            case Async of
+                true ->
+                    spawn(F);
+                false ->
+                    F()
+            end,
+            ?LOG_INFO(#{
+                end_of_connect_callback => Name,
+                type => Type
+            })
+        catch
+            C:E:S ->
+                Log = #{
+                    failed_callback => Name,
+                    type => Type,
+                    c => C,
+                    e => E
+                },
+                ToLog = case ShowCallbackStacktrace of
+                    true ->
+                        Log#{s => S};
+                    false ->
+                        Log
+                end,
+                ?LOG_ERROR(ToLog)
+        end
+    end, Callbacks).

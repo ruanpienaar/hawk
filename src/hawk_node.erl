@@ -1,4 +1,4 @@
--module(hawk_node2).
+-module(hawk_node).
 
 % TODO: implement max connection retries.
 

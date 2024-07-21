@@ -61,7 +61,7 @@ nodes() ->
 
 % -spec node_exists(atom()) -> callback_names_return().
 node_exists(Node) ->
-    hawk_node2:callback_names(Node).
+    hawk_node:callback_names(Node).
 
 % -spec add_node(atom(), atom())
 %         -> hawk_nodes_sup:start_child_return() |
@@ -85,24 +85,24 @@ add_node(Node, Cookie, ConnectedCallback, DisconnectedCallback)
 add_connect_callback(Node, {Name, ConnectCallback})
         when is_function(ConnectCallback) ->
     % call(Node, {add_connect_callback, {Name, ConnectCallback}}).
-    hawk_node2:add_connect_callback(Node, {Name, ConnectCallback}).
+    hawk_node:add_connect_callback(Node, {Name, ConnectCallback}).
 
 % -spec add_disconnect_callback(atom(), callback_type())
 %         -> hawk_node_call_return().
 % PS Appends to the existing connect callbacks.
 add_disconnect_callback(Node, {Name, DisconnectCallback})
         when is_function(DisconnectCallback) ->
-    hawk_node2:add_disconnect_callback(Node, {Name, DisconnectCallback}).
+    hawk_node:add_disconnect_callback(Node, {Name, DisconnectCallback}).
 
 % -spec remove_connect_callback(atom(), callback_name())
 %         -> hawk_node_call_return().
 remove_connect_callback(Node, Name) ->
-    hawk_node2:remove_connect_callback(Node, Name).
+    hawk_node:remove_connect_callback(Node, Name).
 
 % -spec remove_disconnect_callback(atom(), callback_name())
 %         -> hawk_node_call_return().
 remove_disconnect_callback(Node, Name) ->
-    hawk_node2:remove_disconnect_callback(Node, Name).
+    hawk_node:remove_disconnect_callback(Node, Name).
 
 % -spec remove_node(atom())
 %         -> hawk_nodes_sup:delete_child_return().

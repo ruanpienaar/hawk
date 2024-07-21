@@ -1,5 +1,7 @@
 -module(hawk_node2).
 
+% TODO: implement max connection retries.
+
 -include_lib("kernel/include/logger.hrl").
 
 -behaviour(gen_statem).

@@ -5,29 +5,33 @@
 %% Common test
 
 -export([
-    all/0,
-    init_per_suite/1,
-    end_per_suite/1,
-    init_per_testcase/2,
-    end_per_testcase/2
+    all/0
+    ,init_per_suite/1
+    ,end_per_suite/1
+    ,init_per_testcase/2
+    ,end_per_testcase/2
 ]).
 
 %% Tests
 %% add non existing node, then remove
 %% add non existing node, then add node with PEER.
 -export([
-    add_node1/1,
-    add_node2/1,
-    add_both_nodes/1,
-    node_callbacks/1
+    add_node1/1
+    ,add_node2/1
+    ,add_both_nodes/1
+    ,add_node_then_remove/1
+    ,node_callbacks_connect/1
+    ,node_callbacks_disconnect/1
 ]).
 
 all() ->
     [
-        add_node1,
-        add_node2,
-        add_both_nodes,
-        node_callbacks
+        add_node1
+        ,add_node2
+        ,add_both_nodes
+        ,add_node_then_remove
+        ,node_callbacks_connect
+        ,node_callbacks_disconnect
     ].
 
 init_per_suite(Config) ->
@@ -75,161 +79,157 @@ init_per_testcase(_TestCase, Config) ->
     running = peer:get_state(Peer1),
     running = peer:get_state(Peer2),
     % Make sure they're not connected yet
-    [] = nodes(),
-    [] = nodes(hidden),
+    [] = nodes()++nodes(hidden),
     [{nodes, [{Peer1, Node1}, {Peer2, Node2}]}| Config].
 
 end_per_testcase(_TestCase, Config) ->
     {nodes, [{Peer1, Node1}, {Peer2, Node2}]} = lists:keyfind(nodes, 1, Config),
-
     hawk_node2:going_to_remove_node(Node1),
     hawk_node2:going_to_remove_node(Node2),
-
     _ = hawk_nodes_sup:delete_child(Node1),
     _ = hawk_nodes_sup:delete_child(Node2),
-
     ok = peer:stop(Peer1),
     ok = peer:stop(Peer2),
-    [] = nodes(),
+    [] = nodes()++nodes(hidden),
     [] = nodes(hidden),
     Config.
 
 add_node1(Config) ->
     {nodes, [{_Peer1, Node1}, {_Peer2, _Node2}]} = lists:keyfind(nodes, 1, Config),
-    %% ct:pal("TEST node_exists add node ~p\n", [Node1]),
-    [] = nodes(),
+    [] = nodes()++nodes(hidden),
+    [] = hawk:nodes(),
     {ok, _} = hawk:add_node(Node1, cookie),
-    %% ct:pal("TEST node_exists wait stage 2\n", []),
-    F = fun() ->
-        XX = hawk:node_state(Node1),
-        %% ct:pal("wait for connected ~p\n", [XX]),
-        case XX of
-            {ok, {_, #{ connected := C} = _M}} ->
-                C;
-            _ ->
-                false
-        end
-    end,
+    F = fun() -> element(1, hawk:node_state(Node1)) == connected end,
     ok = unit_testing:wait_for_match(10, F, true, 100),
-    %% ct:pal("TEST node_exists wait stage 3\n", []),
-    {ok, _Pid, []} = hawk:node_exists(Node1),
-    %% ct:pal("TEST node_exists wait stage 4\n", []),
-    {ok, {_, #{  conn_cb_list := [],
-                 backoff_type := fixed,
-                 backoff_wait := 100,
-                 connected := true,
-                 cookie := _Cookie,
-                 disc_cb_list := [],
-                 node := Node1}}} = hawk:node_state(Node1),
+    {ok, {[], []}} = hawk:node_exists(Node1),
+    {
+        connected,
+        #{
+            connected := true,
+            node := Node1,
+            cookie := cookie,
+            conn_cb_list := [],
+            backoff_type := fixed,
+            backoff_wait := 100,
+            disc_cb_list := [],
+            connection_retries := 600
+        }
+    } = hawk:node_state(Node1),
+    [Node1] = nodes()++nodes(hidden),
     [{Node1, true}] = hawk:nodes().
 
 add_node2(Config) ->
     {nodes, [{_Peer1, _Node1}, {_Peer2, Node2}]} = lists:keyfind(nodes, 1, Config),
-    %% ct:pal("TEST node_exists add node ~p\n", [Node2]),
-    [] = nodes(),
+    [] = nodes()++nodes(hidden),
+    [] = hawk:nodes(),
     {ok, _} = hawk:add_node(Node2, cookie),
-    %% ct:pal("TEST node_exists wait stage 2\n", []),
-    F = fun() ->
-        XX = hawk:node_state(Node2),
-        %% ct:pal("wait for connected ~p\n", [XX]),
-        case XX of
-            {ok, {_, #{ connected := C} = _M}} ->
-                C;
-            _ ->
-                false
-        end
-    end,
+    F = fun() -> element(1, hawk:node_state(Node2)) == connected end,
     ok = unit_testing:wait_for_match(10, F, true, 100),
-    %% ct:pal("TEST node_exists wait stage 3\n", []),
-    {ok, _Pid, []} = hawk:node_exists(Node2),
-    %% ct:pal("TEST node_exists wait stage 4\n", []),
-    {ok, {_, #{  conn_cb_list := [],
-                 backoff_type := fixed,
-                 backoff_wait := 100,
-                 connected := true,
-                 cookie := _Cookie,
-                 disc_cb_list := [],
-                 node := Node2}}} = hawk:node_state(Node2),
+    {ok, {[], []}} = hawk:node_exists(Node2),
+    {
+        connected,
+        #{
+            connected := true,
+            node := Node2,
+            cookie := cookie,
+            conn_cb_list := [],
+            backoff_type := fixed,
+            backoff_wait := 100,
+            disc_cb_list := [],
+            connection_retries := 600
+        }
+    } = hawk:node_state(Node2),
+    [Node2] = nodes()++nodes(hidden),
     [{Node2, true}] = hawk:nodes().
 
 add_both_nodes(Config) ->
     {nodes, [{_Peer1, Node1}, {_Peer2, Node2}]} = lists:keyfind(nodes, 1, Config),
 
-    %% ct:pal("TEST node_exists add node ~p\n", [Node1]),
-    [] = nodes(),
+    [] = nodes()++nodes(hidden),
+    [] = hawk:nodes(),
     {ok, _} = hawk:add_node(Node1, cookie),
-    %% ct:pal("TEST node_exists wait stage 2\n", []),
-    F = fun() ->
-        XX = hawk:node_state(Node1),
-        %% ct:pal("wait for connected ~p\n", [XX]),
-        case XX of
-            {ok, {_, #{ connected := C} = _M}} ->
-                C;
-            _ ->
-                false
-        end
-    end,
+    F = fun() -> element(1, hawk:node_state(Node1)) == connected end,
     ok = unit_testing:wait_for_match(10, F, true, 100),
-    %% ct:pal("TEST node_exists wait stage 3\n", []),
-    {ok, _Pid, []} = hawk:node_exists(Node1),
-    %% ct:pal("TEST node_exists wait stage 4\n", []),
-    {ok, {_, #{  conn_cb_list := [],
-                 backoff_type := fixed,
-                 backoff_wait := 100,
-                 connected := true,
-                 cookie := _Cookie,
-                 disc_cb_list := [],
-                 node := Node1}}} = hawk:node_state(Node1),
-    hawk_node2:end_of_test(Node1),
-
+    {ok, {[], []}} = hawk:node_exists(Node1),
+    {
+        connected,
+        #{
+            connected := true,
+            node := Node1,
+            cookie := cookie,
+            conn_cb_list := [],
+            backoff_type := fixed,
+            backoff_wait := 100,
+            disc_cb_list := [],
+            connection_retries := 600
+        }
+    } = hawk:node_state(Node1),
+    [Node1] = nodes()++nodes(hidden),
     [{Node1, true}] = hawk:nodes(),
-
-    % timer:sleep(500),
 
     % START second node
 
-    %% ct:pal("TEST node_exists add node ~p\n", [Node2]),
-    [Node1] = nodes(),
+    [Node1] = nodes()++nodes(hidden),
+    [{Node1, true}] = hawk:nodes(),
     {ok, _} = hawk:add_node(Node2, cookie),
-    %% ct:pal("TEST node_exists wait stage 2\n", []),
-    F2 = fun() ->
-        XX = hawk:node_state(Node2),
-        %% ct:pal("wait for connected ~p\n", [XX]),
-        case XX of
-            {ok, {_, #{ connected := C} = _M}} ->
-                C;
-            _ ->
-                false
-        end
-    end,
+    F2 = fun() -> element(1, hawk:node_state(Node2)) == connected end,
     ok = unit_testing:wait_for_match(10, F2, true, 100),
-    %% ct:pal("TEST node_exists wait stage 3\n", []),
-    {ok, _Pid2, []} = hawk:node_exists(Node2),
-    %% ct:pal("TEST node_exists wait stage 4\n", []),
-    {ok, {_, #{  conn_cb_list := [],
-                 backoff_type := fixed,
-                 backoff_wait := 100,
-                 connected := true,
-                 cookie := _Cookie2,
-                 disc_cb_list := [],
-                 node := Node2}}} = hawk:node_state(Node2),
-    hawk_node2:end_of_test(Node2),
+    {ok, {[], []}} = hawk:node_exists(Node2),
+    {
+        connected,
+        #{
+            connected := true,
+            node := Node2,
+            cookie := cookie,
+            conn_cb_list := [],
+            backoff_type := fixed,
+            backoff_wait := 100,
+            disc_cb_list := [],
+            connection_retries := 600
+        }
+    } = hawk:node_state(Node2),
+    [Node1, Node2] = nodes()++nodes(hidden),
+    [{Node1, true}, {Node2, true}] = lists:sort(hawk:nodes()).
 
-    [{Node1, true}, {Node2, true}] = lists:sort(hawk:nodes()),
+add_node_then_remove(Config) ->
+    {nodes, [{_Peer1, Node1}, {_Peer2, _Node2}]} = lists:keyfind(nodes, 1, Config),
+    [] = nodes()++nodes(hidden),
+    [] = hawk:nodes(),
+    {ok, _} = hawk:add_node(Node1, cookie),
+    F = fun() -> element(1, hawk:node_state(Node1)) == connected end,
+    ok = unit_testing:wait_for_match(10, F, true, 100),
+    {ok, {[], []}} = hawk:node_exists(Node1),
+    {
+        connected,
+        #{
+            connected := true,
+            node := Node1,
+            cookie := cookie,
+            conn_cb_list := [],
+            backoff_type := fixed,
+            backoff_wait := 100,
+            disc_cb_list := [],
+            connection_retries := 600
+        }
+    } = hawk:node_state(Node1),
+    [Node1] = nodes()++nodes(hidden),
+    [{Node1, true}] = hawk:nodes(),
 
-    % timer:sleep(500),
+    ok = hawk:remove_node(Node1),
 
-    [Node1, Node2] = nodes(),
+    FRem = fun() -> hawk_nodes_sup:children() end,
+    ok = unit_testing:wait_for_match(10, FRem, [], 100),
 
+    [] = nodes()++nodes(hidden),
+    [] = hawk:nodes(),
 
-    % timer:sleep(500).
-    %
     ok.
 
-node_callbacks(Config) ->
+node_callbacks_connect(Config) ->
     {nodes, [{_Peer1, Node1}, {_Peer2, _Node2}]} = lists:keyfind(nodes, 1, Config),
-    %% ct:pal("TEST node_exists add node ~p\n", [Node1]),
-    [] = nodes(),
+
+    [] = nodes()++nodes(hidden),
+    [] = hawk:nodes(),
     {ok, _} = hawk:add_node(
         Node1,
         cookie,
@@ -240,35 +240,44 @@ node_callbacks(Config) ->
         ],
         []
     ),
-    %% ct:pal("TEST node_exists wait stage 2\n", []),
-    F = fun() ->
-        XX = hawk:node_state(Node1),
-        %% ct:pal("wait for connected ~p\n", [XX]),
-        case XX of
-            {ok, {_, #{ connected := C} = _M}} ->
-                C;
-            _ ->
-                false
-        end
-    end,
+    F = fun() -> element(1, hawk:node_state(Node1)) == connected end,
     ok = unit_testing:wait_for_match(10, F, true, 100),
     %% ct:pal("TEST node_exists wait stage 3\n", []),
-    {ok, _Pid, [add_1, add_2, add_3]} = hawk:node_exists(Node1),
+    {
+        ok,
+        {
+            [
+                {add_1, _},
+                {add_2, _},
+                {add_3, _}
+            ],
+            []
+        }
+    } = hawk:node_exists(Node1),
     %% ct:pal("TEST node_exists wait stage 4\n", []),
-    {ok, {_, #{  conn_cb_list := [
-                    {add_1, _},
-                    {add_2, _},
-                    {add_3, _}
-                 ],
-                 backoff_type := fixed,
-                 backoff_wait := 100,
-                 connected := true,
-                 cookie := _Cookie,
-                 disc_cb_list := [],
-                 node := Node1}}} = hawk:node_state(Node1),
+    {
+        connected,
+        #{
+            connected := true,
+            node := Node1,
+            cookie := cookie,
+            conn_cb_list := [
+                {add_1, _},
+                {add_2, _},
+                {add_3, _}
+            ],
+            backoff_type := fixed,
+            backoff_wait := 100,
+            disc_cb_list := [],
+            connection_retries := 600
+        }
+    } = hawk:node_state(Node1),
     [{Node1, true}] = hawk:nodes(),
     [
         {1, Node1},
         {2, Node1},
         {3, Node1}
     ] = ets:tab2list(test_table).
+
+node_callbacks_disconnect(_Config) ->
+    ok.

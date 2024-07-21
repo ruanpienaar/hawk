@@ -1,4 +1,4 @@
--module(hawk_nodes_sup).
+ -module(hawk_nodes_sup).
 
 -behaviour(supervisor).
 

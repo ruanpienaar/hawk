@@ -1,4 +1,4 @@
--module(hawk_node_mon2).
+-module(hawk_node_mon).
 
 -include_lib("kernel/include/logger.hrl").
 

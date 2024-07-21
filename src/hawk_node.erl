@@ -1,274 +1,284 @@
--module(hawk_node).
+-module(hawk_node2).
+
+% TODO: implement max connection retries.
 
 -include_lib("kernel/include/logger.hrl").
 
+-behaviour(gen_statem).
+
 -export([
     start_link/4,
-    do_start_link/4
+    callback_names/1,
+    add_connect_callback/2,
+    add_disconnect_callback/2,
+    remove_connect_callback/2,
+    remove_disconnect_callback/2,
+    is_node_started/1,
+    init/1,
+    callback_mode/0,
+    handle_event/4,
+    code_change/4,
+    terminate/3
 ]).
-
-% Unit testing
--ifdef(TEST).
--export([
-    initial_state/4,
-    connected_callback/1,
-    disconnect_or_delete_callback/1
-]).
--endif.
-
--ifdef(SYSTEM_TIME).
--define(SYSTEM_TIME_FUNC, erlang:now()).
--else.
--define(SYSTEM_TIME_FUNC,
-    erlang:system_time()
-).
--endif.
-
-%% TODO:
-%% - The ReqPid replies has to be changed to only reply ( ReqPid ! ok ) when the state has changed. ( investigate )
 
 -spec start_link(node(), atom(), list(), list()) -> {ok, pid()}.
-start_link(Node, Cookie, ConnectedCallback, DisconnectedCallback) ->
-    proc_lib:start_link(?MODULE, do_start_link,
-        [Node, Cookie, ConnectedCallback, DisconnectedCallback]).
+start_link(Node, Cookie, ConnectedCallbacks, DisconnectedCallbacks) ->
+    gen_statem:start_link(
+        {local, hawk_nodes_sup:id(Node)},
+        ?MODULE,
+        {Node, Cookie, ConnectedCallbacks, DisconnectedCallbacks},
+        []
+    ).
 
-do_start_link(Node, Cookie, ConnectedCallback, DisconnectedCallback) ->
-    State = initial_state(Node, Cookie, ConnectedCallback, DisconnectedCallback),
-    true = erlang:register(hawk_nodes_sup:id(Node), self()),
-    ok = hawk_node_mon:add_node(hawk_nodes_sup:id(Node), self()),
-    ok = proc_lib:init_ack({ok, self()}),
-    case lists:member(Node, nodes() ++ nodes(hidden)) of
-        true ->
-            % Already known
-            do_start_loop(State);
-        false ->
-            % Not known
-            do_wait(State)
+callback_names(Node) ->
+    gen_statem:call(hawk_nodes_sup:id(Node), callbacks).
+
+add_connect_callback(Node, {Name, ConnectCallback}) ->
+    gen_statem:call(hawk_nodes_sup:id(Node), {add_connect_callback, {Name, ConnectCallback}}).
+
+add_disconnect_callback(Node, {Name, DisconnectCallback}) ->
+    gen_statem:call(hawk_ndoes_sup:id(Node), {add_disconnect_callback, {Name, DisconnectCallback}}).
+
+remove_connect_callback(Node, Name) ->
+    gen_statem:call(hawk_ndoes_sup:id(Node), {remove_connect_callback, Name}).
+
+remove_disconnect_callback(Node, Name) ->
+    gen_statem:call(hawk_ndoes_sup:id(Node), {remove_disconnect_callback, Name}).
+
+is_node_started(Node) ->
+    case whereis(hawk_nodes_sup:id(Node)) of
+        undefined ->
+            false;
+        Pid when is_pid(Pid) ->
+            true
     end.
 
-% -spec initial_state(node(), atom(), hawk:callbacks(), hawk:callbacks()) -> map().
-initial_state(Node, Cookie, ConnectedCallbacks, DisconnectedCallbacks) ->
-    #{ connected => false,
-       node => Node,
-       cookie => Cookie,
-       conn_cb_list => ConnectedCallbacks,
-       disc_cb_list => DisconnectedCallbacks,
-       connection_retries => application:get_env(hawk, connection_retries, 600),
-       conn_retry_wait => application:get_env(hawk, conn_retry_wait, 100)
-    }.
+callback_mode() ->
+    [handle_event_function, state_enter].
 
-%% TODO: maybe configure for auto execute callbacks, based on current state.
-%% sometimes you do not want the callbacks to be executed immediately.
--spec do_wait(map()) -> ok.
-do_wait(#{ connection_retries := ConnTries, node := Node }) when ConnTries =< 0 ->
-    ?LOG_NOTICE(#{max_connection_attempts => Node}),
-    % We're doing this async, not to block ourselves ( same pid )
-    spawn(fun() -> ok = hawk:remove_node(Node) end),
-    deathbed();
-do_wait(
+init({Node, Cookie, ConnectedCallbacks, DisconnectedCallbacks}) ->
+    _ = process_flag(trap_exit, true),
+    ok = hawk_node_mon:add_node(hawk_nodes_sup:id(Node), self()),
+    true = ets:insert(hawk_nodes, {Node, false}),
+    Data = initial_data(Node, Cookie, ConnectedCallbacks, DisconnectedCallbacks),
+    ?LOG_NOTICE(#{data => Data}),
+    {ok, disconnected, Data}.
+
+handle_event(
+        info,
+        {call, state, FromPid},
+        _State,
+        Data
+    ) ->
+    ?LOG_NOTICE(#{data => Data}),
+    FromPid ! {response, Data},
+    keep_state_and_data;
+handle_event(
+        {call, From},
+        callbacks,
+        _State,
+        #{ conn_cb_list := CCBL, disc_cb_list := DCBL } = Data
+    ) ->
+    ?LOG_NOTICE(#{data => Data}),
+    {keep_state_and_data, [{reply, From, {ok, {CCBL, DCBL}}}]};
+handle_event(
+        {call, From},
+        {add_connect_callback, {Name, ConnectCallback}},
+        _State,
+        #{ conn_cb_list := CCBL } = Data
+    ) ->
+    Data2 = Data#{ conn_cb_list => lists:append(CCBL, [{Name, ConnectCallback}]) },
+    {keep_state, Data2, [{reply, From, ok}]};
+handle_event(
+        {call, From},
+        {add_disconnect_callback, {Name, DisconnectCallback}},
+        _State,
+        #{ disc_cb_list := DCBL } = Data
+    ) ->
+    Data2 = Data#{ disc_cb_list => lists:append(DCBL, [{Name, DisconnectCallback}]) },
+    {keep_state, Data2, [{reply, From, ok}]};
+handle_event(
+        {call, From},
+        {remove_connect_callback, Name},
+        _State,
+        #{ conn_cb_list := CCBL } = Data
+    ) ->
+    Data2 = Data#{ conn_cb_list => lists:keydelete(Name, 1, CCBL)},
+    {keep_state, Data2, [{reply, From, ok}]};
+handle_event(
+        {call, From},
+        {remove_disconnect_callback, Name},
+        _State,
+        #{ disc_cb_list := DCBL } = Data
+    ) ->
+    Data2 = Data#{ disc_cb_list => lists:keydelete(Name, 1, DCBL)},
+    {keep_state, Data2, [{reply, From, ok}]};
+handle_event(
+        enter,
+        _,
+        disconnected,
+        #{ node := Node } = Data
+    ) ->
+    ?LOG_NOTICE(#{data => Data}),
+    true = ets:insert(hawk_nodes, {Node, false}),
+    {keep_state, Data, [{state_timeout, 0, reconnect}]};
+handle_event(
+        enter,
+        _,
+        connected,
         #{
-            connection_retries := ConnTries,
-            conn_retry_wait := ConnTryWait,
-            connected := false,
+            node := Node,
+            conn_cb_list := ConnectCallbacks
+        } = Data
+    ) ->
+    ?LOG_NOTICE(#{data => Data}),
+    ok = run_callbacks(connect, ConnectCallbacks),
+    true = ets:insert(hawk_nodes, {Node, true}),
+    {keep_state, Data#{connected => true}};
+handle_event(
+        state_timeout,
+        {nodeup, Node},
+        disconnected,
+        #{ node := Node } = Data
+    ) ->
+    ?LOG_NOTICE(#{data => Data}),
+    {next_state, connected, Data#{connected => true}};
+handle_event(
+        info,
+        {nodeup, Node},
+        disconnected,
+        #{ node := Node } = Data
+    ) ->
+    ?LOG_NOTICE(#{data => Data}),
+    true = ets:insert(hawk_nodes, {Node, true}),
+    {next_state, connected, Data#{connected => true}};
+handle_event(
+        info,
+        {nodedown, Node},
+        connected,
+        #{
+            node := Node,
+            disc_cb_list := DisconnectCallbacks
+        } = Data
+    ) ->
+    ?LOG_NOTICE(#{data => Data}),
+    ok = run_callbacks(disconnect, DisconnectCallbacks),
+    {next_state, disconnected, Data#{connected => false}};
+% If Node fails or does not exist, the message {nodedown, Node} is delivered to the process.
+% This might be sent from hawk_node_mon a second time round. Debug why...
+handle_event(
+        info,
+        {nodedown, _Node},
+        disconnected,
+        Data
+    ) ->
+    ?LOG_NOTICE(#{data => Data}),
+    keep_state_and_data;
+handle_event(
+        state_timeout,
+        reconnect,
+        disconnected,
+        #{
             node := Node,
             cookie := Cookie,
-            conn_cb_list := CCBL,
-            disc_cb_list := DCBL
-        } = State
-    ) when ConnTries > 0 ->
+            connection_retries := Retries,
+            backoff_type := BackoffType,
+            backoff_wait := BackoffWait
+        } = Data
+    ) ->
+    ?LOG_NOTICE(#{data => Data}),
     true = erlang:set_cookie(Node, Cookie),
     case net_kernel:connect_node(Node) of
         true ->
-            % Fake send ourselves a {nodeup,...} message.
-            % Hidden/Slave Nodes are not sending {nodeup, ...} messages.
-
-            % TODO: check if slave/hidden node, and only then send own nodeup
-            % TODO: remove this, and test again... seems weird old code
-
-            self() ! {nodeup, Node},
-            ok;
+            % ok = hawk_node_mon:add_node(hawk_nodes_sup:id(Node), self()),
+            Data2 = Data#{
+                backoff_type => hawk_config:backoff_type(),
+                backoff_wait => hawk_config:backoff_wait(),
+                connected => true
+            },
+            % {next_state, connected, Data2};
+            {keep_state, Data2};
         false ->
-            ok
-    end,
-    receive
-        % Sent from hawk_node_mon
-        {nodeup, Node} ->
-            do_start_loop(State);
-        % Sent from hawk_node_mon
-        {nodedown, Node} ->
-            do_wait(State#{
+            NextBackoffWait = next_backoff(BackoffType, BackoffWait),
+            Data2 = Data#{
+                connection_retries => Retries - 1,
                 connected => false,
-                connection_retries => ConnTries - 1
-            });
-        {call, state, ReqPid} ->
-            ReqPid ! {response, State},
-            do_wait(State);
-        {call, {add_connect_callback, {Name,ConnectCallback}}, ReqPid} when is_function(ConnectCallback) ->
-            do_wait(case lists:keyfind(Name, 1, CCBL) of
-                false ->
-                    ReqPid ! {response, updated},
-                    State#{conn_cb_list => [{Name,ConnectCallback}|CCBL]};
-                _ ->
-                    ReqPid ! {response, duplicate},
-                    State
-            end);
-        {call, {add_disconnect_callback, {Name,DisconnectCallback}}, ReqPid} when is_function(DisconnectCallback) ->
-            do_wait(case lists:keyfind(Name, 1, DCBL) of
-                false ->
-                    ok = disconnect_or_delete_callback([{Name,DisconnectCallback}]),
-                    ReqPid ! {response, updated},
-                    State#{disc_cb_list => [{Name,DisconnectCallback}|DCBL]};
-                _ ->
-                    ReqPid ! {response, duplicate},
-                    State
-            end);
-        {call, {remove_connect_callback, Name}, ReqPid} ->
-            ReqPid ! {response, updated},
-            do_wait(State#{conn_cb_list => lists:keydelete(Name, 1, CCBL)});
-        {call, {remove_disconnect_callback, Name}, ReqPid} ->
-            ReqPid ! {response, updated},
-            do_wait(State#{disc_cb_list => lists:keydelete(Name, 1, DCBL)});
-        {call, callbacks, ReqPid} ->
-            ReqPid ! {response, {CCBL, DCBL}},
-            do_wait(State);
-        {call,_,ReqPid} ->
-            ReqPid ! {response, connecting},
-            do_wait(State);
-        {system, From, _Msg = get_state} ->
-            {_, _} = gen:reply(From, State),
-            do_wait(State);
-        {'EXIT', Who, shutdown} ->
-            do_terminate(Who, DCBL, State, do_wait);
-        Else ->
-            error_logger:error_msg("do_wait received:~p ~p~n", [Else, erlang:process_info(self(), registered_name)]),
-            do_wait(State)
-    after
-        ConnTryWait ->
-            % io:format("Waited long enough ... ... ~n", []),
-            do_wait(State#{connection_retries => ConnTries - 1})
+                backoff_wait => NextBackoffWait
+            },
+            {keep_state, Data2, [{state_timeout, NextBackoffWait, reconnect}]}
     end.
 
--spec do_start_loop(map()) -> ok.
-do_start_loop(#{conn_cb_list := CCBL} = State) ->
-    process_flag(trap_exit, true),
-    connected_callback(CCBL),
-    loop(State#{ connected => true }).
+code_change(_Vsn, State, Data, _Extra) ->
+    {ok, State, Data}.
 
--spec loop(map()) -> ok.
-loop(#{conn_cb_list := CCBL, disc_cb_list := DCBL, node := Node} = State) ->
-    %io:format("HAWK_NODE LOOP!!!~n"),
-    receive
-        {'EXIT', Who, shutdown} ->
-            do_terminate(Who, DCBL, State, loop);
-        % Sent from hawk_node_mon
-        {nodeup, Node} ->
-            % error_logger:error_msg("loop {nodeup, Node} ~p ~p~n", [{nodedown, Node}, erlang:process_info(self(), registered_name)]),
-            loop(State);
-        % Sent from hawk_node_mon
-        {nodedown, Node} ->
-            % error_logger:error_msg("loop {nodedown, Node} ~p ~p~n", [{nodedown, Node}, erlang:process_info(self(), registered_name)]),
-            ok = disconnect_or_delete_callback(DCBL),
-            do_wait(State#{ connected => false });
-        {call, state, ReqPid} ->
-            ReqPid ! {response, State},
-            loop(State);
-        %% Connected so we can execute the connected callback
-        {call, {add_connect_callback, {Name,ConnectCallback}}, ReqPid} when is_function(ConnectCallback) ->
-            loop(case lists:keyfind(Name, 1, CCBL) of
-                false ->
-                    ok = connected_callback([{Name,ConnectCallback}]),
-                    ReqPid ! {response, updated},
-                    State#{conn_cb_list => [{Name,ConnectCallback}|CCBL]};
-                _ ->
-                    ReqPid ! {response, duplicate},
-                    State
-            end);
-        {call, {add_disconnect_callback, {Name,DisconnectCallback}}, ReqPid} when is_function(DisconnectCallback) ->
-            loop(case lists:keyfind(Name, 1, DCBL) of
-                false ->
-                    ReqPid ! {response, updated},
-                    State#{disc_cb_list => [{Name,DisconnectCallback}|DCBL]};
-                _ ->
-                    ReqPid ! {response, duplicate},
-                    State
-            end);
-        {call, {remove_connect_callback, Name}, ReqPid} ->
-            ReqPid ! {response, updated},
-            loop(State#{conn_cb_list => lists:keydelete(Name, 1, CCBL)});
-        {call, {remove_disconnect_callback, Name}, ReqPid} ->
-            ReqPid ! {response, updated},
-            loop(State#{disc_cb_list => lists:keydelete(Name, 1, DCBL)});
-        {call, callbacks, ReqPid} ->
-            ReqPid ! {response, {CCBL, DCBL}},
-            loop(State);
-        {system, From, _Msg = get_state} ->
-            {_, _} = gen:reply(From, State),
-            loop(State);
-        Any ->
-            error_logger:error_msg("loop pid recv : ~p~n", [Any, erlang:process_info(self(), registered_name)]),
-            loop(State)
-    after
-        % Hidden nodes are not sending {nodedown,...} messages.
-        1000 ->
-            case rpc:call(Node, erlang, localtime, []) of
-                {badrpc,nodedown} ->
-                    ok = disconnect_or_delete_callback(DCBL),
-                    do_wait(State#{ connected => false });
-                _X ->
-                    loop(State)
-            end
-    end.
+terminate(shutdown, State, #{disc_cb_list := DisconnectCallbacks} = Data) ->
+    ok = run_callbacks(disconnect, DisconnectCallbacks),
+    ?LOG_NOTICE(#{
+        terminate_state => State,
+        terminate_data => Data
+    });
+terminate(Reason, State, Data) ->
+    ?LOG_WARNING(#{
+        terminate_reason => Reason,
+        terminate_state => State,
+        terminate_data => Data
+    }).
 
--spec do_terminate(pid(), hawk:callbacks(), map(), loop | do_wait) -> ok.
-do_terminate(Who, DCBL, State, LoopFunctionName) when LoopFunctionName == loop orelse
-                                                      LoopFunctionName == do_wait ->
-    %io:format("HAWK_NODE DO_TERMINATE!!!~n"),
-    error_logger:info_msg(
-        "requested shutdown from ~p name:~p~n",
-        [Who,erlang:process_info(Who, registered_name)]),
-    case whereis(hawk_nodes_sup) == Who of
-        true ->
-            % io:format("SHUTDOWN WAS FROM NODES SUP!!!~n", []),
-            ok = disconnect_or_delete_callback(DCBL),
-            exit(self());
-        false ->
-            % io:format("SHUTDOWN WAS  ... NOT  FROM NODES SUP!!!~n", []),
-            LoopFunctionName(State)
-    end.
+%% Still using lists for callbacks, so we can call them in order
+initial_data(Node, Cookie, ConnectedCallbacks, DisconnectedCallbacks) ->
+    #{
+        connected => undefined,
+        node => Node,
+        cookie => Cookie,
+        conn_cb_list => ConnectedCallbacks,
+        disc_cb_list => DisconnectedCallbacks,
+        connection_retries => hawk_config:connection_retries(),
+        backoff_type => hawk_config:backoff_type(),
+        backoff_wait => hawk_config:backoff_wait()
+    }.
 
-% Required for a controlled removal of the node.
-% So that supervisor doesn't just restart.
-deathbed() ->
-    receive
-        _ -> deathbed()
-    end.
+next_backoff(fixed, BackoffWait) ->
+    BackoffWait;
+next_backoff({exponential, Times, MaxTimes}, BackoffWait) when Times >= MaxTimes ->
+    BackoffWait;
+next_backoff({exponential, Times, MaxTimes}, BackoffWait) when Times < MaxTimes ->
+    BackoffWait bsl 1.
 
--spec connected_callback(hawk:callbacks()) -> ok.
-connected_callback(CCBL) ->
+run_callbacks(Type, Callbacks) ->
+    Async = hawk_config:callbacks_async(),
+    ShowCallbackStacktrace = hawk_config:show_callback_stacktrace(),
     lists:foreach(fun({Name, F}) ->
+        ?LOG_INFO(#{
+            start_callback => Name,
+            type => Type
+        }),
         %% TODO: Maybe log callback fun somewhere as info/debug
         %% TODO: maybe spawn, or allow to specify whether callbacks may block or not...
         try
-            error_logger:error_msg("connected_callback ~p\n", [Name]),
-            F()
+            case Async of
+                true ->
+                    spawn(F);
+                false ->
+                    F()
+            end,
+            ?LOG_INFO(#{
+                end_of_callback => Name,
+                type => Type
+            })
         catch
             C:E:S ->
-                error_logger:error_msg("hawk_node connected callback ~p failed ~p ~p ~p",
-                    [Name, C, E, S])
+                Log = #{
+                    failed_callback => Name,
+                    type => Type,
+                    c => C,
+                    e => E
+                },
+                ToLog = case ShowCallbackStacktrace of
+                    true ->
+                        Log#{s => S};
+                    false ->
+                        Log
+                end,
+                ?LOG_ERROR(ToLog)
         end
-    end, CCBL).
-
--spec disconnect_or_delete_callback(hawk:callbacks()) -> ok.
-disconnect_or_delete_callback(DCBL) ->
-    lists:foreach(fun({Name, F}) ->
-    %% TODO: Maybe log callback fun somewhere as info/debug
-    %% TODO: maybe spawn, or allow to specify whether callbacks may block or not...
-        try
-            error_logger:error_msg("disconnect_or_delete_callback ~p\n", [Name]),
-            F()
-        catch
-            C:E:S ->
-                error_logger:error_msg("hawk_node disconnected callback ~p failed ~p ~p ~p",
-                    [Name, C, E, S])
-        end
-    end, DCBL).
+    end, Callbacks).

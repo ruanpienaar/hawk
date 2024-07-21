@@ -21,12 +21,12 @@ init({}) ->
             },
             [
                 #{
-                    id => hawk_node_mon2,
-                    start => {hawk_node_mon2, start_link, []},
+                    id => hawk_node_mon,
+                    start => {hawk_node_mon, start_link, []},
                     restart => permanent,
                     shutdown => 60,
                     type => worker,
-                    modules => [hawk_node_mon2]
+                    modules => [hawk_node_mon]
                 }
             ]
         }

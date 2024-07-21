@@ -22,6 +22,10 @@
     ,add_node_then_remove/1
     ,node_callbacks_connect/1
     ,node_callbacks_disconnect/1
+    % Test where node does not exist, hawk add node, start node, check connected
+    % Test where node does not ecist, hawk add node, keep trying on fixed for 10 times
+    % Test where node exist and peer closed node, keep trying, and node comes back
+    % % Test where node exist and peer closed node, keep trying, and node does NOT come back
 ]).
 
 all() ->
@@ -84,8 +88,6 @@ init_per_testcase(_TestCase, Config) ->
 
 end_per_testcase(_TestCase, Config) ->
     {nodes, [{Peer1, Node1}, {Peer2, Node2}]} = lists:keyfind(nodes, 1, Config),
-    hawk_node2:going_to_remove_node(Node1),
-    hawk_node2:going_to_remove_node(Node2),
     _ = hawk_nodes_sup:delete_child(Node1),
     _ = hawk_nodes_sup:delete_child(Node2),
     ok = peer:stop(Peer1),
@@ -242,30 +244,20 @@ node_callbacks_connect(Config) ->
     ),
     F = fun() -> element(1, hawk:node_state(Node1)) == connected end,
     ok = unit_testing:wait_for_match(10, F, true, 100),
-    %% ct:pal("TEST node_exists wait stage 3\n", []),
     {
         ok,
         {
-            [
-                {add_1, _},
-                {add_2, _},
-                {add_3, _}
-            ],
+            [{add_1, _}, {add_2, _}, {add_3, _}],
             []
         }
     } = hawk:node_exists(Node1),
-    %% ct:pal("TEST node_exists wait stage 4\n", []),
     {
         connected,
         #{
             connected := true,
             node := Node1,
             cookie := cookie,
-            conn_cb_list := [
-                {add_1, _},
-                {add_2, _},
-                {add_3, _}
-            ],
+            conn_cb_list := [{add_1, _}, {add_2, _}, {add_3, _}],
             backoff_type := fixed,
             backoff_wait := 100,
             disc_cb_list := [],
@@ -279,5 +271,56 @@ node_callbacks_connect(Config) ->
         {3, Node1}
     ] = ets:tab2list(test_table).
 
-node_callbacks_disconnect(_Config) ->
-    ok.
+node_callbacks_disconnect(Config) ->
+    {nodes, [{_Peer1, Node1}, {_Peer2, _Node2}]} = lists:keyfind(nodes, 1, Config),
+
+    [] = nodes()++nodes(hidden),
+    [] = hawk:nodes(),
+    {ok, _} = hawk:add_node(
+        Node1,
+        cookie,
+        [],
+        [
+            {remove_1, fun() -> ets:insert(test_table,{1, Node1}) end},
+            {remove_2, fun() -> ets:insert(test_table,{2, Node1}) end},
+            {remove_3, fun() -> ets:insert(test_table,{3, Node1}) end}
+        ]
+    ),
+    F = fun() -> element(1, hawk:node_state(Node1)) == connected end,
+    ok = unit_testing:wait_for_match(10, F, true, 100),
+    {
+        ok,
+        {
+            [],
+            [{remove_1, _}, {remove_2, _}, {remove_3, _}]
+        }
+    } = hawk:node_exists(Node1),
+    {
+        connected,
+        #{
+            connected := true,
+            node := Node1,
+            cookie := cookie,
+            conn_cb_list := [],
+            backoff_type := fixed,
+            backoff_wait := 100,
+            disc_cb_list := [{remove_1, _}, {remove_2, _}, {remove_3, _}],
+            connection_retries := 600
+        }
+    } = hawk:node_state(Node1),
+    [{Node1, true}] = hawk:nodes(),
+    [] = ets:tab2list(test_table),
+
+    ok = hawk:remove_node(Node1),
+
+    FRem = fun() -> hawk_nodes_sup:children() end,
+    ok = unit_testing:wait_for_match(10, FRem, [], 100),
+
+    [] = nodes()++nodes(hidden),
+    [] = hawk:nodes(),
+
+    [
+        {1, Node1},
+        {2, Node1},
+        {3, Node1}
+    ] = ets:tab2list(test_table).

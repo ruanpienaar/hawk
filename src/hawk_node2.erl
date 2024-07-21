@@ -18,11 +18,7 @@
     callback_mode/0,
     handle_event/4,
     code_change/4,
-    terminate/3,
-
-    % just for tracing
-    going_to_remove_node/1,
-    end_of_test/1
+    terminate/3
 ]).
 
 -spec start_link(node(), atom(), list(), list()) -> {ok, pid()}.
@@ -56,16 +52,6 @@ is_node_started(Node) ->
         Pid when is_pid(Pid) ->
             true
     end.
-
-going_to_remove_node(_Node) ->
-    ok.
-
-end_of_test(_Node) ->
-    ok.
-
-% TODO: use sys get state
-% node_state(Node) ->
-%     ok.
 
 callback_mode() ->
     [handle_event_function, state_enter].
@@ -157,14 +143,6 @@ handle_event(
     ) ->
     ?LOG_NOTICE(#{data => Data}),
     {next_state, connected, Data#{connected => true}};
-% handle_event(
-%         info,
-%         {nodeup, Node},
-%         connected,
-%         #{ node := Node } = Data
-%     ) ->
-%     ?LOG_NOTICE(#{data => Data}),
-%     keep_state_and_data;
 handle_event(
         info,
         {nodeup, Node},
